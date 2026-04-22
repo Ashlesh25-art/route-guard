@@ -519,6 +519,11 @@ export default function ManagerDashboard() {
 	const [simMode, setSimMode] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [usingDummy, setUsingDummy] = useState(true);
+	const [theme] = useState(() => localStorage.getItem('theme') || 'dark');
+
+	useEffect(() => {
+		document.documentElement.setAttribute('data-theme', theme);
+	}, [theme]);
 
 	useEffect(() => {
 		setLoading(false);
@@ -539,9 +544,9 @@ export default function ManagerDashboard() {
 		<>
 			<style>{css}</style>
 			<DemoModeBanner usingDummy={usingDummy} />
-			<div style={{ color: T.white }}>
+			<div style={{ color: T.white, width: '100%', minHeight: '100vh', background: T.navy }}>
 				<NavTabs activeTab={activeTab} setActiveTab={setActiveTab} />
-				<div style={{ padding: '0 32px 28px 32px' }}>
+				<div style={{ padding: '0 32px 28px 32px', overflow: 'auto' }}>
 					{displayScreen === 'logistics' && <LogisticsDashboard setScreen={setScreen} simMode={simMode} />}
 					{displayScreen === 'shipments' && <LiveShipmentsScreen />}
 					{displayScreen === 'drivers' && (activeTab === 'drivers' ? <DriverPoolScreen /> : <DriversPanel setScreen={setScreen} />)}
