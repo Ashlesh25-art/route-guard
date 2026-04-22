@@ -1,0 +1,47 @@
+﻿export const DUMMY_ALERTS = [
+	{
+		alert_id: 'ALT-001',
+		shipment_id: 'SHP-2025-00847',
+		tracking_number: 'SAMS847KR2025',
+		alert_type: 'weather_warning',
+		severity: 'critical',
+		message:
+			'Tropical storm forming 180km ahead of MV Pacific Star. Risk Score 91. Wave height 4.8m. 18.5 hour delay expected on current route. Alternate southern route shows Risk Score 28 with only 0.8 day delay. Immediate action required.',
+		risk_score_at_alert: 91,
+		primary_cause: 'Weather (38%) + Port Congestion (29%)',
+		triggered_by: 'system',
+		is_read: false,
+		is_resolved: false,
+		created_at: new Date(Date.now() - 8 * 60000).toISOString(),
+	},
+	{
+		alert_id: 'ALT-002',
+		shipment_id: 'SHP-2025-00612',
+		tracking_number: 'SGLT612EU2025',
+		alert_type: 'port_congestion',
+		severity: 'high',
+		message:
+			'Suez Canal traffic high. Port Said congestion detected — 23 vessels in queue. Estimated additional delay 14 hours. Review alternate Bab-el-Mandeb routing.',
+		risk_score_at_alert: 68,
+		primary_cause: 'Port Congestion (52%) + Traffic (21%)',
+		triggered_by: 'system',
+		is_read: false,
+		is_resolved: false,
+		created_at: new Date(Date.now() - 25 * 60000).toISOString(),
+	},
+	{
+		alert_id: 'ALT-003',
+		shipment_id: 'SHP-2025-00445',
+		tracking_number: 'PHARM445US2025',
+		alert_type: 'risk_increase',
+		severity: 'warning',
+		message:
+			'Risk score increased from 31 to 44 over last 2 hours. LSTM model predicts continued rise. Temperature-sensitive pharmaceutical cargo — monitor closely.',
+		risk_score_at_alert: 44,
+		primary_cause: 'Weather (44%) + Historical Pattern (33%)',
+		triggered_by: 'system',
+		is_read: true,
+		is_resolved: false,
+		created_at: new Date(Date.now() - 90 * 60000).toISOString(),
+	},
+];
