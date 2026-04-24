@@ -13,6 +13,9 @@ backend/.env
 /RouteGuard_Frontend_Spec.md
 /RouteGuard_Project_Plan.md
 /Smart Supply Chain Hone.md
+/docs/
+/download_dataset.py
+/inspect_csvs.py
 
 # Presentation artifacts
 /ppt/
