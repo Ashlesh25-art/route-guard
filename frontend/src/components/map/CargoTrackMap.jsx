@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip } from 'react-leaflet';
+import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet';
 import { api } from '../../config/api';
 import MLPanel from './MLPanel';
 import { ENDPOINTS } from '../../config/endpoints';
 import { normalizeShipment } from '../../utils/shipmentView';
+
 
 const C = {
   bg: '#0a0f1a', panel: '#111827', border: '#1e2d45',
@@ -14,50 +15,61 @@ const C = {
 
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-  .ct-wrap{display:flex;height:100%;background:${C.bg};color:${C.white};font-family:'Space Grotesk',sans-serif;overflow:hidden;}
-  .ct-sidebar{width:280px;flex-shrink:0;background:${C.panel};border-right:1px solid ${C.border};display:flex;flex-direction:column;overflow:hidden;}
+  .ct-wrap{display:flex;height:100%;background:var(--bg-base,#0a0f1a);color:var(--text-primary,#f0f4ff);font-family:'Space Grotesk',sans-serif;overflow:hidden;}
+  .ct-sidebar{width:280px;flex-shrink:0;background:var(--bg-surface,#111827);border-right:1px solid var(--border-default,#1e2d45);display:flex;flex-direction:column;overflow:hidden;}
   .ct-map{flex:1;position:relative;min-width:0;min-height:0;}
-  .ct-detail{width:320px;flex-shrink:0;background:${C.panel};border-left:1px solid ${C.border};overflow-y:auto;}
-  .ct-search{padding:12px;border-bottom:1px solid ${C.border};}
-  .ct-search input{width:100%;background:#1a2640;border:1px solid ${C.border};border-radius:8px;padding:8px 12px;color:${C.white};font-size:12px;outline:none;}
-  .ct-search input::placeholder{color:${C.dim};}
-  .ct-filters{display:flex;gap:6px;padding:10px 12px;border-bottom:1px solid ${C.border};flex-wrap:wrap;}
-  .ct-filter{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid ${C.border};background:transparent;color:${C.gray};transition:all .2s;}
-  .ct-filter.active{background:${C.teal};color:#000;border-color:${C.teal};}
+  .ct-detail{width:320px;flex-shrink:0;background:var(--bg-surface,#111827);border-left:1px solid var(--border-default,#1e2d45);overflow-y:auto;}
+  .ct-search{padding:12px;border-bottom:1px solid var(--border-default,#1e2d45);}
+  .ct-search input{width:100%;background:var(--bg-elevated,#1c2333);border:1px solid var(--border-default,#1e2d45);border-radius:8px;padding:8px 12px;color:var(--text-primary,#f0f4ff);font-size:12px;outline:none;font-family:'Space Grotesk',sans-serif;}
+  .ct-search input::placeholder{color:var(--text-muted,#4a5f7a);}
+  .ct-filters{display:flex;gap:6px;padding:10px 12px;border-bottom:1px solid var(--border-default,#1e2d45);flex-wrap:wrap;}
+  .ct-filter{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border-default,#1e2d45);background:transparent;color:var(--text-secondary,#8a9bb5);transition:all .2s;font-family:'Space Grotesk',sans-serif;}
+  .ct-filter.active{background:#00d4b4;color:#000;border-color:#00d4b4;}
   .ct-list{flex:1;overflow-y:auto;padding:8px;}
-  .ct-card{padding:12px;border-radius:8px;border:1px solid ${C.border};margin-bottom:8px;cursor:pointer;transition:all .2s;background:transparent;}
+  .ct-card{padding:12px;border-radius:8px;border:1px solid var(--border-default,#1e2d45);margin-bottom:8px;cursor:pointer;transition:all .2s;background:transparent;}
   .ct-card:hover{border-color:rgba(0,212,180,.4);background:rgba(0,212,180,.04);}
-  .ct-card.active{border-color:${C.teal};background:rgba(0,212,180,.08);}
+  .ct-card.active{border-color:#00d4b4;background:rgba(0,212,180,.08);}
   .ct-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;}
-  .ct-badge.transit{background:rgba(0,212,180,.15);color:${C.teal};}
-  .ct-badge.delayed{background:rgba(245,158,11,.15);color:${C.amber};}
-  .ct-badge.delivered{background:rgba(16,185,129,.15);color:${C.green};}
-  .ct-badge.pending{background:rgba(139,155,181,.15);color:${C.gray};}
-  .ct-progress{height:3px;background:#1a2640;border-radius:2px;margin:6px 0;}
-  .ct-progress-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,${C.teal},#22d3ee);}
-  .ct-detail-header{padding:16px;border-bottom:1px solid ${C.border};display:flex;justify-content:space-between;align-items:center;}
-  .ct-detail-section{padding:14px 16px;border-bottom:1px solid ${C.border};}
+  .ct-badge.transit{background:rgba(0,212,180,.15);color:#00d4b4;}
+  .ct-badge.delayed{background:rgba(245,158,11,.15);color:#f59e0b;}
+  .ct-badge.delivered{background:rgba(16,185,129,.15);color:#10b981;}
+  .ct-badge.pending{background:rgba(139,155,181,.15);color:var(--text-secondary,#8a9bb5);}
+  .ct-progress{height:3px;background:var(--bg-elevated,#1a2640);border-radius:2px;margin:6px 0;}
+  .ct-progress-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,#00d4b4,#22d3ee);}
+  .ct-detail-header{padding:16px;border-bottom:1px solid var(--border-default,#1e2d45);display:flex;justify-content:space-between;align-items:center;}
+  .ct-detail-section{padding:14px 16px;border-bottom:1px solid var(--border-default,#1e2d45);}
   .ct-detail-row{display:flex;justify-content:space-between;padding:6px 0;font-size:12px;}
-  .ct-detail-label{color:${C.gray};}
-  .ct-detail-val{font-weight:600;color:${C.white};}
-  .ct-route-bar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid ${C.border};}
+  .ct-detail-label{color:var(--text-secondary,#8a9bb5);}
+  .ct-detail-val{font-weight:600;color:var(--text-primary,#f0f4ff);}
+  .ct-route-bar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border-default,#1e2d45);}
   .ct-port{text-align:center;}
-  .ct-port-code{font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;color:${C.white};}
-  .ct-port-city{font-size:10px;color:${C.gray};}
+  .ct-port-code{font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--text-primary,#f0f4ff);}
+  .ct-port-city{font-size:10px;color:var(--text-secondary,#8a9bb5);}
   .ct-route-line{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
-  .ct-route-track{width:100%;height:4px;background:#1a2640;border-radius:2px;position:relative;}
-  .ct-route-dot{width:10px;height:10px;border-radius:50%;background:${C.teal};position:absolute;top:-3px;transform:translateX(-50%);box-shadow:0 0 8px ${C.teal};}
-  .ct-status-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:0;border-bottom:1px solid ${C.border};}
-  .ct-status-cell{padding:10px 8px;text-align:center;border-right:1px solid ${C.border};cursor:pointer;}
+  .ct-route-track{width:100%;height:4px;background:var(--bg-elevated,#1a2640);border-radius:2px;position:relative;}
+  .ct-route-dot{width:10px;height:10px;border-radius:50%;background:#00d4b4;position:absolute;top:-3px;transform:translateX(-50%);box-shadow:0 0 8px #00d4b4;}
+  .ct-status-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:0;border-bottom:1px solid var(--border-default,#1e2d45);}
+  .ct-status-cell{padding:10px 8px;text-align:center;border-right:1px solid var(--border-default,#1e2d45);cursor:pointer;}
   .ct-status-cell:last-child{border-right:none;}
   .ct-status-num{font-size:20px;font-weight:700;}
-  .ct-status-lbl{font-size:9px;color:${C.gray};text-transform:uppercase;}
+  .ct-status-lbl{font-size:9px;color:var(--text-secondary,#8a9bb5);text-transform:uppercase;}
   .ct-mono{font-family:'JetBrains Mono',monospace;}
   .ct-timeline-item{display:flex;gap:10px;padding:8px 0;}
   .ct-timeline-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:4px;}
-  .ct-timeline-line{width:1px;background:${C.border};margin:0 auto;}
-  .leaflet-container{background:#0a0f1a!important;}
+  .ct-timeline-line{width:1px;background:var(--border-default,#1e2d45);margin:0 auto;}
+  .leaflet-container{background:var(--bg-base,#0a0f1a)!important;}
 `;
+
+function useTheme() {
+  const [theme, setTheme] = useState(() => document.documentElement.getAttribute('data-theme') || 'dark');
+  useEffect(() => {
+    const obs = new MutationObserver(() => setTheme(document.documentElement.getAttribute('data-theme') || 'dark'));
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
+  return theme;
+}
+
 
 function riskColor(level) {
   return { critical: C.red, high: C.amber, medium: C.amber, low: C.green }[level] || C.gray;
@@ -72,6 +84,32 @@ function badgeClass(status) {
 function fmtStatus(s) { return String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()); }
 function fmtDate(iso) { try { return new Date(iso).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return iso || '—'; } }
 
+function toPositions(waypoints = []) {
+  return waypoints
+    .map((point) => [Number(point?.lat), Number(point?.lng)])
+    .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+}
+
+function MapViewportController({ selectedShipment }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!selectedShipment) return;
+    const routePositions = toPositions(selectedShipment.route_waypoints || []);
+    if (routePositions.length >= 2) {
+      map.fitBounds(routePositions, { padding: [30, 30], maxZoom: 6 });
+      return;
+    }
+    const lat = Number(selectedShipment.current_latitude);
+    const lng = Number(selectedShipment.current_longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      map.setView([lat, lng], 5);
+    }
+  }, [map, selectedShipment]);
+
+  return null;
+}
+
 // Demo shipments for when backend is offline
 const DEMO = [
   { shipment_id: 'demo-1', tracking_number: 'CTK-7291-XRAY', current_status: 'in_transit', current_risk_level: 'medium', current_risk_score: 54, origin_port_name: 'Istanbul', destination_port_name: 'New York', departure_time: '2025-07-20T08:00:00Z', expected_arrival: '2025-07-22T16:00:00Z', shipper_name: 'Turkish Cargo', vessel_name: 'MSK ULTRA', cargo_type: 'standard', cargo_description: 'Electronics', declared_value: 45000, weight_kg: 4520, quantity: 84, current_latitude: 41.0, current_longitude: 28.5, route_waypoints: [{ lat: 41.0, lng: 28.5 }, { lat: 40.7, lng: -74.0 }] },
@@ -81,7 +119,6 @@ const DEMO = [
 ];
 
 function ShipmentCard({ s, active, onClick }) {
-  const sv = normalizeShipment ? normalizeShipment(s) : s;
   const pct = Math.round(Math.min(98, Math.max(5, 100 - (s.current_risk_score || 30))));
   return (
     <div className={`ct-card${active ? ' active' : ''}`} onClick={onClick}>
@@ -104,7 +141,7 @@ function ShipmentCard({ s, active, onClick }) {
   );
 }
 
-function DetailPanel({ s, onClose, onViewDetails }) {
+function DetailPanel({ s, onClose, onViewDetails, showML }) {
   if (!s) return null;
   const pct = Math.round(Math.min(98, Math.max(5, 100 - (s.current_risk_score || 30))));
   const originCode = String(s.origin_port_name || '').slice(0, 3).toUpperCase();
@@ -190,8 +227,8 @@ function DetailPanel({ s, onClose, onViewDetails }) {
         )}
       </div>
 
-      {/* ML Analysis — fetches live from backend */}
-      <MLPanel shipment={s} />
+      {/* ML Analysis (manager-only) */}
+      {showML ? <MLPanel shipment={s} /> : null}
 
       {/* Tracking timeline */}
       <div className="ct-detail-section">
@@ -222,8 +259,17 @@ function DetailPanel({ s, onClose, onViewDetails }) {
   );
 }
 
-export default function CargoTrackMap({ initialShipments, initialSelected }) {
+export default function CargoTrackMap({ initialShipments, initialSelected, mode = 'manager' }) {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isShipperMode = mode === 'shipper';
+  const showML = mode === 'manager';
+  const isDark = theme === 'dark';
+  const tileUrl = isDark
+    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+  const tileAttr = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>';
+
   const [shipments, setShipments] = useState(initialShipments || DEMO);
   const [selected, setSelected] = useState(initialSelected || null);
   const [filter, setFilter] = useState('all');
@@ -232,8 +278,25 @@ export default function CargoTrackMap({ initialShipments, initialSelected }) {
   // Fetch live shipments if none passed
   useEffect(() => {
     if (initialShipments) { setShipments(initialShipments); return; }
-    api.get(ENDPOINTS.ALL_SHIPMENTS).then(r => { if (r.data?.length) setShipments(r.data); }).catch(() => {});
-  }, [initialShipments]);
+    const endpoint = isShipperMode ? ENDPOINTS.CONSIGNMENTS : ENDPOINTS.ALL_SHIPMENTS;
+    api.get(endpoint)
+      .then((r) => {
+        if (Array.isArray(r.data) && r.data.length) {
+          setShipments(r.data.map(normalizeShipment));
+        }
+      })
+      .catch(() => {
+        if (isShipperMode) {
+          api.get(ENDPOINTS.MY_SHIPMENTS)
+            .then((r) => {
+              if (Array.isArray(r.data) && r.data.length) {
+                setShipments(r.data.map(normalizeShipment));
+              }
+            })
+            .catch(() => {});
+        }
+      });
+  }, [initialShipments, isShipperMode]);
 
   useEffect(() => { if (initialSelected) setSelected(initialSelected); }, [initialSelected]);
 
@@ -274,14 +337,15 @@ export default function CargoTrackMap({ initialShipments, initialSelected }) {
         {/* MAP */}
         <div className="ct-map">
           <MapContainer center={mapCenter} zoom={selected ? 4 : 2} style={{ height: '100%', width: '100%' }} key={selected?.shipment_id || 'world'}>
-            <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="© OpenStreetMap © CARTO" />
+            <TileLayer url={tileUrl} attribution={tileAttr} maxZoom={19} />
+            <MapViewportController selectedShipment={selected} />
             {filtered.map(s => {
-              if (!s.route_waypoints?.length) return null;
-              const positions = s.route_waypoints.map(p => [p.lat, p.lng]);
+              const positions = toPositions(s.route_waypoints || []);
+              if (!positions.length) return null;
               const isActive = selected?.shipment_id === s.shipment_id;
               const color = riskColor(s.current_risk_level);
               return (
-                <g key={s.shipment_id}>
+                <Fragment key={s.shipment_id}>
                   <Polyline positions={positions} pathOptions={{ color: isActive ? C.teal : color, weight: isActive ? 3 : 1.5, opacity: isActive ? 1 : 0.5, dashArray: s.current_status === 'delayed' ? '6,4' : null }} eventHandlers={{ click: () => setSelected(s) }} />
                   {s.current_latitude && (
                     <CircleMarker center={[s.current_latitude, s.current_longitude]} radius={isActive ? 10 : 7} pathOptions={{ color: isActive ? C.teal : color, fillColor: isActive ? C.teal : color, fillOpacity: 0.9, weight: isActive ? 3 : 1 }} eventHandlers={{ click: () => setSelected(s) }}>
@@ -292,14 +356,21 @@ export default function CargoTrackMap({ initialShipments, initialSelected }) {
                   )}
                   {positions[0] && <CircleMarker center={positions[0]} radius={5} pathOptions={{ color: C.green, fillColor: C.green, fillOpacity: 1, weight: 1 }} />}
                   {positions[positions.length - 1] && <CircleMarker center={positions[positions.length - 1]} radius={5} pathOptions={{ color: C.gray, fillColor: C.gray, fillOpacity: 1, weight: 1 }} />}
-                </g>
+                </Fragment>
               );
             })}
           </MapContainer>
         </div>
 
         {/* RIGHT DETAIL PANEL */}
-        {selected && <DetailPanel s={selected} onClose={() => setSelected(null)} onViewDetails={(id) => navigate(`/manager/shipments/${id}`)} />}
+        {selected && (
+          <DetailPanel
+            s={selected}
+            onClose={() => setSelected(null)}
+            showML={showML}
+            onViewDetails={(id) => navigate(isShipperMode ? `/shipper/shipments/${id}` : `/manager/shipments/${id}`)}
+          />
+        )}
       </div>
     </>
   );
