@@ -16,6 +16,11 @@ class UserRole(str, enum.Enum):
 	RECEIVER = 'receiver'
 
 
+class AccountType(str, enum.Enum):
+	INDIVIDUAL = 'individual'
+	COMPANY = 'company'
+
+
 class User(Base):
 	__tablename__ = 'users'
 
@@ -24,9 +29,16 @@ class User(Base):
 	email = Column(String(100), unique=True, nullable=False, index=True)
 	password_hash = Column(String(255), nullable=False)
 	role = Column(SQLEnum(UserRole, values_callable=enum_values, name='user_role'), nullable=False, index=True)
+	account_type = Column(SQLEnum(AccountType, values_callable=enum_values, name='account_type'), nullable=True)
 	company_name = Column(String(100), nullable=True)
 	phone_number = Column(String(20), nullable=True)
 	country = Column(String(50), nullable=True)
+	email_verified = Column(Boolean, nullable=False, default=False)
+	phone_verified = Column(Boolean, nullable=False, default=False)
+	tos_accepted = Column(Boolean, nullable=False, default=False)
+	privacy_accepted = Column(Boolean, nullable=False, default=False)
+	shipping_terms_accepted = Column(Boolean, nullable=False, default=False)
+	onboarding_completed_at = Column(DateTime(timezone=True), nullable=True)
 	is_active = Column(Boolean, default=True)
 	created_at = Column(DateTime(timezone=True), server_default=func.now())
 	updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
