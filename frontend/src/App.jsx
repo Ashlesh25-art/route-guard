@@ -13,7 +13,13 @@ import ConfirmDelivery from './pages/receiver/ConfirmDelivery';
 import ReceiverDashboard from './pages/receiver/ReceiverDashboard';
 import ReceiverOrderDetail from './pages/receiver/ReceiverOrderDetail';
 import CreateShipment from './pages/shipper/CreateShipment';
+import ShipperAlerts from './pages/shipper/ShipperAlerts';
+import ShipperAddresses from './pages/shipper/ShipperAddresses';
+import ShipperChat from './pages/shipper/ShipperChat';
+import ShipperDocuments from './pages/shipper/ShipperDocuments';
+import ShipperLiveMap from './pages/shipper/ShipperLiveMap';
 import ShipperOrders from './pages/shipper/ShipperOrders';
+import ShipperSpending from './pages/shipper/ShipperSpending';
 import OrderDetail from './pages/shipper/OrderDetail';
 
 const ROLE_HOME = {
@@ -135,6 +141,54 @@ export default function App() {
 					element={
 						<RoleGuard allowedRoles={['shipper']}>
 							<CreateShipment />
+						</RoleGuard>
+					}
+				/>
+				<Route
+					path="shipper/chat"
+					element={
+						<RoleGuard allowedRoles={['shipper']}>
+							<ShipperChat />
+						</RoleGuard>
+					}
+				/>
+				<Route
+					path="shipper/live-map"
+					element={
+						<RoleGuard allowedRoles={['shipper']}>
+							<ShipperLiveMap />
+						</RoleGuard>
+					}
+				/>
+				<Route
+					path="shipper/alerts"
+					element={
+						<RoleGuard allowedRoles={['shipper']}>
+							<ShipperAlerts />
+						</RoleGuard>
+					}
+				/>
+				<Route
+					path="shipper/documents"
+					element={
+						<RoleGuard allowedRoles={['shipper']}>
+							<ShipperDocuments />
+						</RoleGuard>
+					}
+				/>
+				<Route
+					path="shipper/spending"
+					element={
+						<RoleGuard allowedRoles={['shipper']}>
+							<ShipperSpending />
+						</RoleGuard>
+					}
+				/>
+				<Route
+					path="shipper/addresses"
+					element={
+						<RoleGuard allowedRoles={['shipper']}>
+							<ShipperAddresses />
 						</RoleGuard>
 					}
 				/>

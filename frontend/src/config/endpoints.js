@@ -6,11 +6,13 @@ export const ENDPOINTS = {
 	MANAGERS: '/auth/managers',
 	PORTS: '/auth/ports',
 	VESSELS: '/auth/vessels',
+	ONBOARDING_STATUS: '/auth/onboarding-status',
 
 	CREATE_SHIPMENT: '/shipments/create',
 	MY_SHIPMENTS: '/shipments/my',
 	SHIPMENT_DETAIL: (id) => `/shipments/${id}`,
 	UPDATE_STATUS: (id) => `/shipments/${id}/status`,
+	CONSIGNMENTS: '/consignments',
 
 	RISK_SCORE: (id) => `/shipments/${id}/risk`,
 	ML_PREDICTION: (id) => `/shipments/${id}/prediction`,
@@ -33,4 +35,12 @@ export const ENDPOINTS = {
 
 	MY_ASSIGNMENT: '/driver/assignment',
 	REPORT_INCIDENT: (id) => `/driver/shipments/${id}/incident`,
+
+	QUOTE_REQUESTS: '/quote-requests',
+	QUOTE_REQUEST_DETAIL: (id) => `/quote-requests/${id}`,
+	BROADCAST_QUOTE_REQUEST: (id) => `/quote-requests/${id}/broadcast`,
+	QUOTE_OFFERS: (id) => `/quote-requests/${id}/offers`,
+	QUOTE_MESSAGES: (id) => `/quote-requests/${id}/messages`,
+	ACCEPT_OFFER: (id) => `/quote-offers/${id}/accept`,
+	REJECT_OFFER: (id) => `/quote-offers/${id}/reject`,
 };
