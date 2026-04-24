@@ -28,6 +28,7 @@ function StatCard({ icon: Icon, label, value, subtitle }) {
 export default function ShipperOrders() {
 	const navigate = useNavigate();
 	const [shipments, setShipments] = useState([]);
+	const [quoteRequests, setQuoteRequests] = useState([]);
 	const [alerts, setAlerts] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState('');
@@ -37,15 +38,32 @@ export default function ShipperOrders() {
 			setLoading(true);
 			setError('');
 			try {
-				const [shipmentsRes, alertsRes] = await Promise.all([
-					api.get(ENDPOINTS.MY_SHIPMENTS),
+				const [shipmentsRes, alertsRes, requestsRes] = await Promise.all([
+					api.get(ENDPOINTS.CONSIGNMENTS).catch(() => api.get(ENDPOINTS.MY_SHIPMENTS)),
 					api.get(ENDPOINTS.ACTIVE_ALERTS),
+					api.get(ENDPOINTS.QUOTE_REQUESTS).catch(() => ({ data: [] })),
 				]);
-				setShipments(Array.isArray(shipmentsRes.data) ? shipmentsRes.data : []);
+				const shipmentsPayload = shipmentsRes.data;
+				if (Array.isArray(shipmentsPayload)) {
+					setShipments(shipmentsPayload);
+				} else if (shipmentsPayload && typeof shipmentsPayload === 'object') {
+					const merged = [
+						...(shipmentsPayload.pending || []),
+						...(shipmentsPayload.in_transit || []),
+						...(shipmentsPayload.completed || []),
+						...(shipmentsPayload.delayed || []),
+						...(shipmentsPayload.cancelled || []),
+					];
+					setShipments(merged);
+				} else {
+					setShipments([]);
+				}
 				setAlerts(Array.isArray(alertsRes.data) ? alertsRes.data : alertsRes.data?.alerts || []);
+				setQuoteRequests(Array.isArray(requestsRes.data) ? requestsRes.data : []);
 			} catch {
 				setShipments([]);
 				setAlerts([]);
+				setQuoteRequests([]);
 				setError('Unable to load sender orders.');
 			} finally {
 				setLoading(false);
@@ -60,6 +78,14 @@ export default function ShipperOrders() {
 	const delayedOrders = useMemo(
 		() => orders.filter((item) => item.status === 'delayed' || Number(item.actual_delay_hours || 0) > 0),
 		[orders],
+	);
+	const deliveredOrders = useMemo(
+		() => orders.filter((item) => item.status === 'delivered'),
+		[orders],
+	);
+	const openQuoteRequests = useMemo(
+		() => quoteRequests.filter((request) => !['accepted', 'cancelled', 'converted'].includes(String(request.status || '').toLowerCase())),
+		[quoteRequests],
 	);
 	const orderAlerts = useMemo(
 		() => alerts.filter((alert) => orders.some((order) => order.shipment_id === alert.shipment_id)),
@@ -107,13 +133,13 @@ export default function ShipperOrders() {
 					</div>
 					<div className="card" style={{ padding: 12 }}>
 						<div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>Step 2</div>
-						<div style={{ fontWeight: 700, marginBottom: 6 }}>Select Logistics Manager or Company</div>
-						<div className="page-subtitle">Pick an available logistics manager before submitting the order.</div>
+						<div style={{ fontWeight: 700, marginBottom: 6 }}>Broadcast For Quotes</div>
+						<div className="page-subtitle">Send your request to matching logistics providers and wait for offers.</div>
 					</div>
 					<div className="card" style={{ padding: 12 }}>
 						<div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>Step 3</div>
-						<div style={{ fontWeight: 700, marginBottom: 6 }}>Fill Order Details and Submit</div>
-						<div className="page-subtitle">Add cargo details, then create and track the order from this page.</div>
+						<div style={{ fontWeight: 700, marginBottom: 6 }}>Negotiate Then Confirm</div>
+						<div className="page-subtitle">Use Chat to negotiate offers, accept one, and move it to consignments.</div>
 					</div>
 				</div>
 				<div style={{ marginTop: 12 }}>
@@ -128,8 +154,18 @@ export default function ShipperOrders() {
 				<StatCard icon={Package} label="All Orders" value={orders.length} subtitle="Current and historical shipments" />
 				<StatCard icon={Truck} label="Active Orders" value={activeOrders.length} subtitle="Still in transit or pending" />
 				<StatCard icon={Clock3} label="Delayed Orders" value={delayedOrders.length} subtitle="Need attention now" />
-				<StatCard icon={ShieldAlert} label="Active Alerts" value={orderAlerts.length} subtitle="Latest shipment notifications" />
+				<StatCard icon={ShieldAlert} label="Open Quotes" value={openQuoteRequests.length} subtitle="Waiting for offer decision" />
 			</div>
+
+			{openQuoteRequests.length > 0 ? (
+				<div className="card" style={{ marginBottom: 20 }}>
+					<h2 className="section-title">Open Quote Requests</h2>
+					<p className="page-subtitle" style={{ marginBottom: 10 }}>You have {openQuoteRequests.length} active requests. Continue in Chat to review offers.</p>
+					<button type="button" className="btn-primary" onClick={() => navigate('/shipper/chat')}>
+						Open Negotiation Chat
+					</button>
+				</div>
+			) : null}
 
 			{delayedOrders.length > 0 ? (
 				<div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--warning)', backgroundColor: 'rgba(245, 158, 11, 0.08)' }}>
@@ -211,9 +247,39 @@ export default function ShipperOrders() {
 				)}
 			</div>
 
+			{deliveredOrders.length > 0 ? (
+				<div style={{ marginTop: 20 }}>
+					<h2 className="section-title">Delivered Orders</h2>
+					<div className="grid-two">
+						{deliveredOrders.slice(0, 4).map((shipment) => (
+							<div key={shipment.shipment_id} className="card" style={{ padding: 14 }}>
+								<div className="mono" style={{ fontWeight: 700, marginBottom: 4 }}>{shipment.tracking_number}</div>
+								<div className="page-subtitle" style={{ marginBottom: 8 }}>{shipment.origin} to {shipment.destination}</div>
+								<div style={{ display: 'flex', gap: 8 }}>
+									<button
+										type="button"
+										className="btn-outline"
+										onClick={() => navigate(`/shipper/spending?tab=ratings&shipment=${shipment.shipment_id}`)}
+									>
+										Rate Carrier
+									</button>
+									<button
+										type="button"
+										className="btn-outline"
+										onClick={() => navigate('/shipper/spending')}
+									>
+										View Invoice
+									</button>
+								</div>
+							</div>
+						))}
+					</div>
+				</div>
+			) : null}
+
 			{orderAlerts.length > 0 ? (
 				<div style={{ marginTop: 20 }}>
-					<h2 className="section-title">Latest Notifications</h2>
+					<h2 className="section-title">Latest Shipment Notifications</h2>
 					<div className="grid-two">
 						{orderAlerts.slice(0, 4).map((alert) => (
 							<div key={alert.alert_id} className="card" style={{ padding: 14 }}>

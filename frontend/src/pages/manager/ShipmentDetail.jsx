@@ -59,74 +59,98 @@ function RouteMap({ shipment, prediction, approvedRouteId, hoveredRouteId, selec
 		? [Number(shipment.current_latitude), Number(shipment.current_longitude)] : null;
 	const center = cur || pos[Math.floor(pos.length / 2)];
 
-	// Original route (shown as dashed when rerouted)
 	const origWp = shipment.original_route_waypoints || [];
 	const origPos = origWp.map(p => [Number(p.lat), Number(p.lng)]);
-
-	// All alternate routes from ML prediction
 	const altRoutes = prediction?.alternate_routes || [];
-
-	// After approval: approved route becomes the highlighted one
-	const isRerouted = shipment.is_rerouted;
 	const hasAltRoutes = altRoutes.length > 0;
+	const isRerouted = shipment.is_rerouted;
+
+	// Split active route: sailed (origin→current) vs remaining (current→dest)
+	let sailedPos = [];
+	let remainingPos = pos;
+	if (cur && pos.length > 1) {
+		let minDist = Infinity, splitIdx = 0;
+		pos.forEach(([lat, lng], i) => {
+			const d = Math.hypot(lat - cur[0], lng - cur[1]);
+			if (d < minDist) { minDist = d; splitIdx = i; }
+		});
+		sailedPos = [...pos.slice(0, splitIdx + 1), cur];
+		remainingPos = [cur, ...pos.slice(splitIdx + 1)];
+	}
 
 	return (
 		<div className="card fade" style={{ padding: 0, overflow: 'hidden' }}>
 			<div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'14px 20px 0 20px' }}>
 				<div className="section" style={{margin:0}}>🗺️ Route Map</div>
 				<div style={{display:'flex',gap:12,fontSize:11,flexWrap:'wrap'}}>
+					{sailedPos.length > 1 && <span style={{display:'flex',alignItems:'center',gap:4}}>
+						<span style={{width:16,height:2,background:T.gray,borderRadius:2,display:'inline-block',opacity:.5}}/> Sailed
+					</span>}
 					<span style={{display:'flex',alignItems:'center',gap:4}}>
 						<span style={{width:16,height:3,background:isRerouted?'#f97316':T.teal,borderRadius:2,display:'inline-block'}}/>
-						{isRerouted ? 'Rerouted' : 'Active Route'}
+						{isRerouted ? 'Rerouted' : 'Remaining'}
 					</span>
 					{origPos.length > 0 && <span style={{display:'flex',alignItems:'center',gap:4}}>
-						<span style={{width:16,height:3,background:T.dim,borderRadius:2,display:'inline-block',borderTop:'1px dashed '+T.dim}}/> Original
+						<span style={{width:16,height:2,background:T.dim,borderRadius:2,display:'inline-block'}}/> Original
 					</span>}
 					{hasAltRoutes && <span style={{display:'flex',alignItems:'center',gap:4}}>
-						<span style={{width:16,height:3,background:'#6b7280',borderRadius:2,display:'inline-block'}}/> Alternates
+						<span style={{width:16,height:3,background:'#6b7280',borderRadius:2,display:'inline-block'}}/> Alt routes
 					</span>}
 					{(hoveredRouteId || selectedRouteId) && <span style={{display:'flex',alignItems:'center',gap:4}}>
 						<span style={{width:16,height:3,background:T.amber,borderRadius:2,display:'inline-block'}}/> Selected
 					</span>}
 					<span style={{display:'flex',alignItems:'center',gap:4}}><span style={{width:8,height:8,background:T.green,borderRadius:'50%',display:'inline-block'}}/> Origin</span>
-					<span style={{display:'flex',alignItems:'center',gap:4}}><span style={{width:8,height:8,background:T.red,borderRadius:'50%',display:'inline-block'}}/> Destination</span>
+					<span style={{display:'flex',alignItems:'center',gap:4}}><span style={{width:8,height:8,background:T.red,borderRadius:'50%',display:'inline-block'}}/> Dest</span>
 				</div>
 			</div>
 			<div style={{ height: 360, marginTop: 10 }}>
 				<MapContainer center={center} zoom={3} style={{height:'100%',width:'100%'}} scrollWheelZoom>
 					<TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="&copy; OSM &copy; CARTO" />
 
-					{/* Original route - dashed gray when rerouted */}
-					{origPos.length > 0 && <Polyline positions={origPos} pathOptions={{ color: T.dim, weight: 2, opacity: 0.45, dashArray: '8 6' }} />}
+					{/* Original route when rerouted — dashed gray */}
+					{origPos.length > 0 && <Polyline positions={origPos} pathOptions={{ color: T.dim, weight: 2, opacity: 0.35, dashArray: '8 6' }} />}
 
-					{/* All alternate routes as gray dotted lines */}
+					{/* Already-sailed portion — dim & thin dashed */}
+					{sailedPos.length > 1 && (
+						<Polyline positions={sailedPos} pathOptions={{ color: T.gray, weight: 2, opacity: 0.3, dashArray: '4 5' }} />
+					)}
+
+					{/* Remaining active route — solid bright */}
+					<Polyline
+						positions={remainingPos.length > 1 ? remainingPos : pos}
+						pathOptions={{ color: isRerouted ? '#f97316' : T.teal, weight: 3, opacity: 0.9 }}
+					/>
+
+					{/* Alternate routes — anchored at vessel's current position */}
 					{altRoutes.map(r => {
 						const rPos = (r.waypoints || []).map(p => [Number(p.lat), Number(p.lng)]);
 						if (rPos.length < 2) return null;
 						const isApproved = approvedRouteId === r.route_id;
 						const isSelected = selectedRouteId === r.route_id;
-						const isHovered = hoveredRouteId === r.route_id;
-						const highlight = isHovered || isSelected || isApproved;
+						const isHovered  = hoveredRouteId  === r.route_id;
+						const highlight  = isHovered || isSelected || isApproved;
 						return (
 							<Polyline
 								key={r.route_id}
 								positions={rPos}
 								pathOptions={{
-									color: isApproved ? '#f97316' : isSelected ? T.amber : isHovered ? '#fbbf24' : '#4b5563',
-									weight: highlight ? 3 : 2,
-									opacity: highlight ? 0.95 : 0.45,
+									color:     isApproved ? '#f97316' : isSelected ? T.amber : isHovered ? '#fbbf24' : '#4b5563',
+									weight:    highlight ? 3 : 2,
+									opacity:   highlight ? 0.95 : 0.45,
 									dashArray: isApproved ? undefined : '6 5',
 								}}
 							>
-								{highlight && <Tooltip sticky>{r.name} — Risk {Number(r.risk_score).toFixed(1)}</Tooltip>}
+								{highlight && (
+									<Tooltip sticky>
+										{r.name} — Risk {Number(r.risk_score).toFixed(1)}
+										{Number(r.extra_distance_km) > 0 && ` · +${Number(r.extra_distance_km).toFixed(0)} km`}
+									</Tooltip>
+								)}
 							</Polyline>
 						);
 					})}
 
-					{/* Active route - solid */}
-					<Polyline positions={pos} pathOptions={{ color: isRerouted ? '#f97316' : T.teal, weight: 3, opacity: 0.9 }} />
-
-					{/* Port markers */}
+					{/* Origin & Destination port markers */}
 					<CircleMarker center={pos[0]} radius={7} pathOptions={{color:T.green,fillColor:T.green,fillOpacity:1,weight:2}}>
 						<Tooltip direction="top" offset={[0,-8]}><strong>{shipment.origin_port_name||'Origin'}</strong></Tooltip>
 					</CircleMarker>
@@ -134,10 +158,13 @@ function RouteMap({ shipment, prediction, approvedRouteId, hoveredRouteId, selec
 						<Tooltip direction="top" offset={[0,-8]}><strong>{shipment.destination_port_name||'Destination'}</strong></Tooltip>
 					</CircleMarker>
 
-					{/* Live position */}
+					{/* Live vessel — this is where ALL alternate routes originate */}
 					{cur && (
-						<CircleMarker center={cur} radius={10} pathOptions={{color:T.teal,fillColor:T.teal,fillOpacity:.9,weight:3}}>
-							<Tooltip permanent direction="top" offset={[0,-12]}><strong>{shipment.tracking_number} — Live</strong></Tooltip>
+						<CircleMarker center={cur} radius={11} pathOptions={{color:T.teal,fillColor:T.teal,fillOpacity:.9,weight:3}}>
+							<Tooltip permanent direction="top" offset={[0,-15]}>
+								<strong>{shipment.tracking_number}</strong>
+								{hasAltRoutes && <> · <span style={{color:'#00d4b4'}}>↕ reroute origin</span></>}
+							</Tooltip>
 						</CircleMarker>
 					)}
 				</MapContainer>
@@ -286,7 +313,14 @@ export default function ShipmentDetail() {
 												{r.name}
 												{isSelected && !isApproved && <span style={{fontSize:10,color:T.amber,marginLeft:6}}>← shown on map</span>}
 											</div>
-											<div style={{fontSize:11,color:T.gray}}>Risk: {Number(r.risk_score).toFixed(1)} · +${Number(r.extra_cost_usd).toFixed(0)} · +{Number(r.delay_hours ?? r.extra_time_hours ?? 0).toFixed(1)}h</div>
+											<div style={{fontSize:11,color:T.gray}}>
+												Risk: {Number(r.risk_score).toFixed(1)}
+												{Number(r.extra_distance_km) > 0
+													? ` · +${Number(r.extra_distance_km).toFixed(0)} km extra`
+													: ' · Shortest option'}
+												{' · '}
+												{r.from_current ? '📍 from your position' : 'from origin'}
+											</div>
 										</div>
 										<div style={{display:'flex',gap:6,alignItems:'center'}}>
 											{r.recommended && <span className="chip c-grn">Recommended</span>}

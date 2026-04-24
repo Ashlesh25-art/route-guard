@@ -28,6 +28,8 @@ const INITIAL_FORM = {
 	origin_port_id: '',
 	destination_port_id: '',
 	receiver_id: '',
+	pickup_address: '',
+	dropoff_address: '',
 	assigned_manager_id: '',
 	vessel_id: '',
 	departure_time: '',
@@ -110,7 +112,7 @@ export default function CreateShipment() {
 
 	const validateStep = () => {
 		if (step === 1) {
-			if (!formData.origin_port_id || !formData.destination_port_id || !formData.receiver_id || !formData.assigned_manager_id || !formData.departure_time || !formData.expected_arrival) {
+		if (!formData.origin_port_id || !formData.destination_port_id || !formData.receiver_id || !formData.pickup_address || !formData.departure_time || !formData.expected_arrival) {
 				toast.error('Please complete all route and party fields.');
 				return false;
 			}
@@ -139,29 +141,24 @@ export default function CreateShipment() {
 		setSubmitting(true);
 		try {
 			const payload = {
+				receiver_id: formData.receiver_id,
 				origin_port_id: formData.origin_port_id,
 				destination_port_id: formData.destination_port_id,
-				departure_time: new Date(formData.departure_time).toISOString(),
-				expected_arrival: new Date(formData.expected_arrival).toISOString(),
-				receiver_id: formData.receiver_id,
-				assigned_manager_id: formData.assigned_manager_id,
-				vessel_id: formData.vessel_id || undefined,
-				priority_level: formData.priority,
+				pickup_address: formData.pickup_address,
+				dropoff_address: formData.dropoff_address || undefined,
+				quantity: 1,
+				cargo_type: formData.cargo_type,
+				weight_kg: Number(formData.weight_kg),
+				volume_cbm: formData.volume_cbm ? Number(formData.volume_cbm) : undefined,
 				special_instructions: formData.special_instructions || undefined,
-				cargo: {
-					cargo_type: formData.cargo_type,
-					description: formData.cargo_description,
-					weight_kg: Number(formData.weight_kg),
-					volume_cbm: formData.volume_cbm ? Number(formData.volume_cbm) : undefined,
-					declared_value: formData.declared_value ? Number(formData.declared_value) : undefined,
-					insurance_value: formData.insurance_value ? Number(formData.insurance_value) : undefined,
-				},
+				status: 'draft',
 			};
-			const response = await api.post(ENDPOINTS.CREATE_SHIPMENT, payload);
-			toast.success('Shipment created successfully!');
-			navigate(`/shipper/shipments/${response.data.shipment_id}`);
+			const response = await api.post(ENDPOINTS.QUOTE_REQUESTS, payload);
+			await api.post(ENDPOINTS.BROADCAST_QUOTE_REQUEST(response.data.request_id));
+			toast.success('Order request created and broadcast to matching logistics providers.');
+			navigate('/shipper/chat');
 		} catch (err) {
-			const msg = err?.response?.data?.detail || 'Unable to create shipment. Please try again.';
+			const msg = err?.response?.data?.detail || 'Unable to create order request. Please try again.';
 			toast.error(msg);
 		} finally {
 			setSubmitting(false);
@@ -327,6 +324,28 @@ export default function CreateShipment() {
 						</div>
 
 						<div className="full">
+							<label className="label">Pickup Address</label>
+							<input
+								className="input"
+								type="text"
+								value={formData.pickup_address}
+								onChange={(e) => updateField('pickup_address', e.target.value)}
+								placeholder="Warehouse / pickup location"
+							/>
+						</div>
+
+						<div className="full">
+							<label className="label">Dropoff Address (optional)</label>
+							<input
+								className="input"
+								type="text"
+								value={formData.dropoff_address}
+								onChange={(e) => updateField('dropoff_address', e.target.value)}
+								placeholder="Receiver address"
+							/>
+						</div>
+
+						<div className="full">
 							<label className="label">
 								<Box size={13} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
 								Logistics Manager / Company
@@ -460,6 +479,8 @@ export default function CreateShipment() {
 								<div className="info-row"><span>Origin Port</span><strong>{getPortName(formData.origin_port_id)}</strong></div>
 								<div className="info-row"><span>Destination Port</span><strong>{getPortName(formData.destination_port_id)}</strong></div>
 								<div className="info-row"><span>Receiver</span><strong>{getReceiverName(formData.receiver_id)}</strong></div>
+								<div className="info-row"><span>Pickup Address</span><strong>{formData.pickup_address || '—'}</strong></div>
+								<div className="info-row"><span>Dropoff Address</span><strong>{formData.dropoff_address || '—'}</strong></div>
 								<div className="info-row"><span>Logistics Manager</span><strong>{getManagerName(formData.assigned_manager_id)}</strong></div>
 								<div className="info-row"><span>Vessel</span><strong>{getVesselName(formData.vessel_id)}</strong></div>
 								<div className="info-row"><span>Departure</span><strong>{formData.departure_time ? new Date(formData.departure_time).toLocaleString() : '—'}</strong></div>
@@ -490,12 +511,12 @@ export default function CreateShipment() {
 						{submitting ? (
 							<>
 								<div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
-								Creating Shipment...
+								Creating Order Request...
 							</>
 						) : (
 							<>
 								<CheckCircle2 size={18} />
-								Confirm & Create Shipment
+								Confirm & Request Quotes
 							</>
 						)}
 					</button>
