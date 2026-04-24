@@ -468,6 +468,8 @@ button {
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
+	overflow-y: auto;
+	flex: 1;
 }
 
 .sidebar__nav-link {
@@ -567,6 +569,12 @@ button {
 	color: var(--text-primary);
 	display: grid;
 	place-items: center;
+	cursor: pointer;
+	transition: background 0.15s, border-color 0.15s;
+}
+.topbar__icon-btn:hover {
+	background: var(--bg-overlay);
+	border-color: var(--border-default);
 }
 
 .topbar__badge {
