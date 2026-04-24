@@ -1,9 +1,12 @@
-﻿import { useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, DollarSign, Ship, CheckCircle2, Truck, Users, Zap } from 'lucide-react';
-import { useSocket } from '../../hooks/useSocket';
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { api } from '../../config/api';
+import { ENDPOINTS } from '../../config/endpoints';
+import CargoTrackMap from '../../components/map/CargoTrackMap';
+import DemoModeBanner from '../../components/ui/DemoModeBanner';
 import Spinner from '../../components/ui/Spinner';
 
-// Theme colors
+// ── Theme ────────────────────────────────────────────────────────────────────
 const T = {
 	navy: '#080E1A',
 	card: '#0D1526',
@@ -18,53 +21,60 @@ const T = {
 	grayDim: '#4A5F7A',
 };
 
-// Inline styles
+// ── Inline CSS ────────────────────────────────────────────────────────────────
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@400;500&display=swap');
-  .mono { font-family: 'JetBrains Mono', monospace; }
-  .orb { font-family: 'Orbitron', monospace; }
-  @keyframes fadeUp { from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:translateY(0);} }
-  @keyframes countUp { from{opacity:0;transform:scale(0.85);}to{opacity:1;transform:scale(1);} }
-  @keyframes pulse { 0%,100%{opacity:1;}50%{opacity:0.4;} }
-  .card-animate { animation: fadeUp 0.5s ease both; }
-  .live-dot { width:8px; height:8px; background:${T.green}; border-radius:50%; animation:pulse 2s infinite; display:inline-block; }
-  .kpi-card { background:${T.card}; border:1px solid ${T.border}; border-radius:12px; padding:20px; overflow:hidden; animation:countUp .6s ease both; }
-  .kpi-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; }
-  .kpi-card.teal::before { background:linear-gradient(90deg,${T.teal},transparent); }
-  .kpi-card.amber::before { background:linear-gradient(90deg,${T.amber},transparent); }
-  .kpi-card.green::before { background:linear-gradient(90deg,${T.green},transparent); }
-  .kpi-card.red::before { background:linear-gradient(90deg,${T.red},transparent); }
-  .chip { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:600; letter-spacing:.5px; text-transform:uppercase; }
-  .chip-teal { background:rgba(0,212,180,.15); color:${T.teal}; border:1px solid rgba(0,212,180,.3); }
-  .chip-amber { background:rgba(245,158,11,.15); color:${T.amber}; border:1px solid rgba(245,158,11,.3); }
-  .chip-red { background:rgba(239,68,68,.15); color:${T.red}; border:1px solid rgba(239,68,68,.3); }
-  .chip-green { background:rgba(16,185,129,.15); color:${T.green}; border:1px solid rgba(16,185,129,.3); }
-  .chip-gray { background:rgba(138,155,181,.1); color:${T.gray}; border:1px solid rgba(138,155,181,.2); }
-  .btn-primary { background:linear-gradient(135deg,${T.teal},${T.cyan}); color:#000; font-weight:700; font-size:13px; padding:10px 22px; border:none; border-radius:8px; cursor:pointer; transition:all .2s; font-family:'Space Grotesk',sans-serif; }
-  .btn-primary:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,212,180,.35); }
-  .btn-ghost { background:transparent; color:${T.teal}; font-weight:600; font-size:13px; padding:9px 20px; border:1px solid ${T.teal}; border-radius:8px; cursor:pointer; transition:all .2s; font-family:'Space Grotesk',sans-serif; }
-  .btn-ghost:hover { background:rgba(0,212,180,.08); }
-  .card { background:${T.card}; border:1px solid ${T.border}; border-radius:12px; padding:20px; transition:all .2s; }
-  .card:hover { border-color:rgba(0,212,180,.28); }
-  .alert-card { background:${T.card}; border:1px solid ${T.red}; border-radius:8px; padding:14px; }
-  .risk-dot { width:10px; height:10px; background:${T.red}; border-radius:50%; animation:pulse 1.5s infinite; }
-  .section-label { font-size:11px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:${T.grayDim}; margin-bottom:12px; }
-  .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-  .number-big { font-family:'Orbitron',monospace; font-size:28px; font-weight:700; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .orb{font-family:'Orbitron',monospace;}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes countUp{from{opacity:0;transform:scale(0.85);}to{opacity:1;transform:scale(1);}}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .card-animate{animation:fadeUp 0.5s ease both;}
+  .live-dot{width:8px;height:8px;background:${T.green};border-radius:50%;animation:pulse 2s infinite;display:inline-block;}
+  .kpi-card{background:${T.card};border:1px solid ${T.border};border-radius:12px;padding:20px;overflow:hidden;animation:countUp .6s ease both;position:relative;}
+  .kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+  .kpi-card.teal::before{background:linear-gradient(90deg,${T.teal},transparent);}
+  .kpi-card.amber::before{background:linear-gradient(90deg,${T.amber},transparent);}
+  .kpi-card.green::before{background:linear-gradient(90deg,${T.green},transparent);}
+  .kpi-card.red::before{background:linear-gradient(90deg,${T.red},transparent);}
+  .chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;}
+  .chip-teal{background:rgba(0,212,180,.15);color:${T.teal};border:1px solid rgba(0,212,180,.3);}
+  .chip-amber{background:rgba(245,158,11,.15);color:${T.amber};border:1px solid rgba(245,158,11,.3);}
+  .chip-red{background:rgba(239,68,68,.15);color:${T.red};border:1px solid rgba(239,68,68,.3);}
+  .chip-green{background:rgba(16,185,129,.15);color:${T.green};border:1px solid rgba(16,185,129,.3);}
+  .chip-gray{background:rgba(138,155,181,.1);color:${T.gray};border:1px solid rgba(138,155,181,.2);}
+  .btn-primary{background:linear-gradient(135deg,${T.teal},${T.cyan});color:#000;font-weight:700;font-size:13px;padding:10px 22px;border:none;border-radius:8px;cursor:pointer;transition:all .2s;font-family:'Space Grotesk',sans-serif;}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,212,180,.35);}
+  .btn-primary:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
+  .btn-ghost{background:transparent;color:${T.teal};font-weight:600;font-size:13px;padding:9px 20px;border:1px solid ${T.teal};border-radius:8px;cursor:pointer;transition:all .2s;font-family:'Space Grotesk',sans-serif;}
+  .btn-ghost:hover{background:rgba(0,212,180,.08);}
+  .card{background:${T.card};border:1px solid ${T.border};border-radius:12px;padding:20px;transition:all .2s;}
+  .card:hover{border-color:rgba(0,212,180,.28);}
+  .alert-card{background:${T.card};border:1px solid ${T.red};border-radius:8px;padding:14px;}
+  .risk-dot{width:10px;height:10px;background:${T.red};border-radius:50%;animation:pulse 1.5s infinite;}
+  .section-label{font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:${T.grayDim};margin-bottom:12px;}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .number-big{font-family:'Orbitron',monospace;font-size:28px;font-weight:700;}
+  .progress-bar{height:6px;background:${T.border};border-radius:3px;overflow:hidden;}
+  .progress-fill{height:100%;background:linear-gradient(90deg,${T.teal},${T.cyan});transition:width 0.5s ease;}
+  .empty-state{text-align:center;padding:40px 20px;color:${T.gray};}
 `;
 
-// Icon Component
+// ── Tiny Icon SVG ─────────────────────────────────────────────────────────────
 const Icon = ({ name, size = 16, color = 'currentColor' }) => {
 	const icons = {
-		activity: <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>,
-		box: <><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="16 2 12 7 8 2"/></>,
-		package: <><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 03 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></>,
-		truck: <><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></>,
-		clock: <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>,
-		user: <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 3a4 4 0 110 8 4 4 0 010-8z"/>,
-		alert: <><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>,
-		zap: <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>,
-		route: <><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 15 15"/></>,
+		activity: <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />,
+		truck: <><rect x="1" y="3" width="15" height="13" rx="1" /><polygon points="16 8 20 8 23 11 23 16 16 16 16 8" /><circle cx="5.5" cy="18.5" r="2.5" /><circle cx="18.5" cy="18.5" r="2.5" /></>,
+		user: <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 3a4 4 0 110 8 4 4 0 010-8z" />,
+		alert: <><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></>,
+		zap: <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />,
+		clock: <><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>,
+		check: <polyline points="20 6 9 17 4 12" />,
+		package: <><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" /></>,
+		refresh: <><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" /></>,
+		route: <><circle cx="12" cy="12" r="10" /><polyline points="12 8 12 12 15 15" /></>,
 	};
 	return (
 		<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -73,23 +83,7 @@ const Icon = ({ name, size = 16, color = 'currentColor' }) => {
 	);
 };
 
-// KPI Card Component
-const KpiCard = ({ label, value, sub, variant = 'teal', icon, delay = 0 }) => {
-	return (
-		<div className={`kpi-card ${variant}`} style={{ animationDelay: `${delay}ms`, position: 'relative' }}>
-			<div style={{ display: 'flex', justifyContent: 'space-between' }}>
-				<div>
-					<div style={{ fontSize: 11, color: T.gray, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 10 }}>{label}</div>
-					<div className="number-big" style={{ color: variant === 'teal' ? T.teal : variant === 'amber' ? T.amber : variant === 'green' ? T.green : T.red }}>{value}</div>
-					<div style={{ fontSize: 12, color: T.gray, marginTop: 6 }}>{sub}</div>
-				</div>
-				<Icon name={icon} size={20} color={variant === 'teal' ? T.teal : variant === 'amber' ? T.amber : variant === 'green' ? T.green : T.red} />
-			</div>
-		</div>
-	);
-};
-
-// Chip Component
+// ── Shared UI atoms ───────────────────────────────────────────────────────────
 const Chip = ({ label, variant = 'teal', dot = false }) => (
 	<span className={`chip chip-${variant}`}>
 		{dot && <span style={{ width: 6, height: 6, background: 'currentColor', borderRadius: '50%', display: 'inline-block' }} />}
@@ -97,116 +91,166 @@ const Chip = ({ label, variant = 'teal', dot = false }) => (
 	</span>
 );
 
-// Map Visualization Component
-const MapViz = ({ riskLevel, driverPos }) => (
-	<div style={{ height: 200, background: `radial-gradient(circle at 50% 50%, ${riskLevel === 'high' ? 'rgba(239,68,68,.1)' : 'rgba(0,212,180,.05)'}, transparent)`, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', positions: 'relative', overflow: 'hidden' }}>
-		<div style={{ width: '80%', height: 1, background: 'rgba(26,42,69,0.5)', position: 'relative', borderRadius: 2 }}>
-			<div
-				style={{
-					position: 'absolute',
-					left: `${driverPos * 100}%`,
-					top: -8,
-					width: 16,
-					height: 16,
-					background: riskLevel === 'high' ? T.red : T.teal,
-					borderRadius: '50%',
-					border: `2px solid ${T.card}`,
-					transition: 'all 0.3s',
-				}}
-			/>
+const KpiCard = ({ label, value, sub, variant = 'teal', icon, delay = 0 }) => (
+	<div className={`kpi-card ${variant}`} style={{ animationDelay: `${delay}ms` }}>
+		<div style={{ display: 'flex', justifyContent: 'space-between' }}>
+			<div>
+				<div style={{ fontSize: 11, color: T.gray, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 10 }}>{label}</div>
+				<div className="number-big" style={{ color: variant === 'teal' ? T.teal : variant === 'amber' ? T.amber : variant === 'green' ? T.green : T.red }}>{value}</div>
+				<div style={{ fontSize: 12, color: T.gray, marginTop: 6 }}>{sub}</div>
+			</div>
+			<Icon name={icon} size={20} color={variant === 'teal' ? T.teal : variant === 'amber' ? T.amber : variant === 'green' ? T.green : T.red} />
 		</div>
-		<div style={{ position: 'absolute', fontSize: 11, color: T.gray, bottom: 10, left: 10 }}>Route visualization</div>
 	</div>
 );
 
-// Logistics Dashboard
-const LogisticsDashboard = ({ setScreen, simMode }) => {
-	const [riskScore, setRiskScore] = useState(simMode ? 78 : 24);
-	useEffect(() => {
-		if (simMode) setRiskScore(78);
-	}, [simMode]);
+// ── Nav Tabs ──────────────────────────────────────────────────────────────────
+const TABS = [
+	{ id: 'dashboard', label: 'Control Tower', icon: 'activity' },
+	{ id: 'shipments', label: 'Live Shipments', icon: 'truck' },
+	{ id: 'consignments', label: 'Consignments', icon: 'package' },
+	{ id: 'drivers', label: 'Driver Pool', icon: 'user' },
+	{ id: 'optimize', label: 'AI Optimizer', icon: 'zap' },
+	{ id: 'alerts', label: 'Risk Alerts', icon: 'alert' },
+];
+
+const NavTabs = ({ activeTab, onTabChange }) => (
+	<div style={{ display: 'flex', gap: 8, padding: '16px 32px', borderBottom: `1px solid ${T.border}`, overflowX: 'auto' }}>
+		{TABS.map((tab) => {
+			const active = activeTab === tab.id;
+			return (
+				<button
+					key={tab.id}
+					id={`tab-${tab.id}`}
+					onClick={() => onTabChange(tab.id)}
+					style={{
+						display: 'flex', alignItems: 'center', gap: 8,
+						padding: '10px 16px',
+						border: active ? `2px solid ${T.teal}` : `1px solid ${T.border}`,
+						background: active ? `rgba(0,212,180,.1)` : 'transparent',
+						color: active ? T.teal : T.gray,
+						borderRadius: 8, cursor: 'pointer', fontSize: 12,
+						fontWeight: active ? 700 : 500, transition: 'all 0.2s',
+						fontFamily: "'Space Grotesk', sans-serif", whiteSpace: 'nowrap',
+					}}
+				>
+					<Icon name={tab.icon} size={14} color="currentColor" />
+					{tab.label}
+				</button>
+			);
+		})}
+	</div>
+);
+
+// ── DUMMY FALLBACKS (used only when backend unreachable) ──────────────────────
+const DUMMY_SUMMARY = {
+	active_shipments: 14, high_risk_count: 3, delayed_count: 2,
+	on_time_percentage: 87.3, total_drivers: 26, active_drivers: 23,
+	rerouted_this_week: 4, financial_saved_usd: 244000,
+};
+const DUMMY_SHIPMENTS = [
+	{ shipment_id: 'demo-1', tracking_number: 'ORD-2842', current_status: 'pending', current_risk_level: 'high', current_risk_score: 78, origin_port_id: null, destination_port_id: null, _origin: 'Mumbai', _dest: 'Aurangabad' },
+	{ shipment_id: 'demo-2', tracking_number: 'ORD-2841', current_status: 'in_transit', current_risk_level: 'medium', current_risk_score: 54, origin_port_id: null, destination_port_id: null, _origin: 'Pune', _dest: 'Nashik' },
+	{ shipment_id: 'demo-3', tracking_number: 'ORD-2843', current_status: 'in_transit', current_risk_level: 'low', current_risk_score: 21, origin_port_id: null, destination_port_id: null, _origin: 'Bangalore', _dest: 'Hyderabad' },
+];
+const DUMMY_DRIVERS = [
+	{ user_id: 'd1', full_name: 'Ravi Naik', status: 'available', active_shipments: 0, phone_number: '+91-9820000001' },
+	{ user_id: 'd2', full_name: 'Suresh Mehta', status: 'en-route', active_shipments: 2, phone_number: '+91-9820000002' },
+	{ user_id: 'd3', full_name: 'Pradeep Rao', status: 'en-route', active_shipments: 1, phone_number: '+91-9820000003' },
+];
+const DUMMY_ALERTS = [
+	{ alert_id: 'a1', severity: 'critical', message: 'Traffic Congestion on MH-48 — ORD-2841 ETA +45 min', tracking_number: 'ORD-2841', created_at: new Date().toISOString(), is_resolved: false },
+	{ alert_id: 'a2', severity: 'high', message: 'Weather Alert: Heavy rain in Nashik region', tracking_number: 'ORD-2841', created_at: new Date().toISOString(), is_resolved: false },
+	{ alert_id: 'a3', severity: 'medium', message: 'Low Fuel Warning — Driver Pradeep, 12% remaining', tracking_number: 'ORD-2840', created_at: new Date().toISOString(), is_resolved: false },
+];
+
+// ── RISK helpers ──────────────────────────────────────────────────────────────
+function riskVariant(level) {
+	if (!level) return 'gray';
+	const l = String(level).toLowerCase();
+	if (l === 'critical' || l === 'high') return 'red';
+	if (l === 'medium') return 'amber';
+	return 'teal';
+}
+function statusVariant(s) {
+	const m = { in_transit: 'teal', pending: 'amber', delayed: 'red', at_port: 'cyan', picked_up: 'green' };
+	return m[s] || 'gray';
+}
+function fmtStatus(s) {
+	return s ? s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '—';
+}
+function timeAgo(iso) {
+	const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
+	if (diff < 60) return `${diff}s ago`;
+	if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+	return `${Math.floor(diff / 3600)}h ago`;
+}
+
+// ── Control Tower Screen ──────────────────────────────────────────────────────
+const ControlTower = ({ summary, shipments, usingDummy, onTabChange, onViewShipment }) => {
+	const highRiskShipments = shipments.filter(
+		(s) => ['high', 'critical'].includes(String(s.current_risk_level || '').toLowerCase())
+	).slice(0, 3);
 
 	return (
 		<div style={{ animation: 'fadeUp 0.4s ease' }}>
+			{/* Header */}
 			<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, paddingBottom: 20, borderBottom: `1px solid ${T.border}` }}>
 				<div>
 					<h1 style={{ fontSize: 20, fontWeight: 700, color: T.white }}>Logistics Control Tower</h1>
-					<div style={{ fontSize: 12, color: T.gray, marginTop: 3 }}>Real-time fleet and shipment orchestration</div>
+					<div style={{ fontSize: 12, color: T.gray, marginTop: 3 }}>Real-time fleet & shipment orchestration</div>
 				</div>
 				<div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
 					<span className="live-dot" />
-					<span style={{ fontSize: 11, color: T.gray }}>Live · 14 shipments tracked</span>
+					<span style={{ fontSize: 11, color: T.gray }}>Live · {summary.active_shipments} shipments tracked</span>
 				</div>
 			</div>
 
+			{/* KPI Row */}
 			<div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
-				<KpiCard label="Active Deliveries" value="14" sub="3 high priority" variant="teal" icon="truck" delay={0} />
-				<KpiCard label="Fleet Utilization" value="87%" sub="23 of 26 drivers active" variant="green" icon="user" delay={100} />
-				<KpiCard label="Risk Alerts" value={simMode ? '4' : '2'} sub={simMode ? 'Simulation mode' : '2 unresolved'} variant={simMode ? 'red' : 'amber'} icon="alert" delay={200} />
-				<KpiCard label="System Risk Score" value={`${riskScore}%`} sub={riskScore > 50 ? 'High — action needed' : 'Nominal'} variant={riskScore > 50 ? 'red' : 'teal'} icon="zap" delay={300} />
+				<KpiCard label="Active Shipments" value={summary.active_shipments} sub={`${summary.delayed_count} delayed`} variant="teal" icon="package" delay={0} />
+				<KpiCard label="Fleet Utilization" value={`${summary.active_drivers}/${summary.total_drivers}`} sub={`${summary.on_time_percentage}% on time`} variant="green" icon="truck" delay={100} />
+				<KpiCard label="High Risk" value={summary.high_risk_count} sub="Needs attention" variant={summary.high_risk_count > 0 ? 'red' : 'teal'} icon="alert" delay={200} />
+				<KpiCard label="Saved This Week" value={`$${(summary.financial_saved_usd / 1000).toFixed(0)}K`} sub={`${summary.rerouted_this_week} reroutes`} variant="amber" icon="zap" delay={300} />
 			</div>
 
-			{simMode && (
-				<div className="alert-card" style={{ marginBottom: 20 }}>
-					<div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-						<span className="risk-dot" />
-						<div>
-							<div style={{ fontSize: 13, fontWeight: 700, color: T.red }}>SIMULATION MODE ACTIVE — Disruption Scenario</div>
-							<div style={{ fontSize: 12, color: T.gray }}>Traffic jam on NH-48, weather alert in Nashik, driver delay on Route 3</div>
-						</div>
-					</div>
-				</div>
-			)}
-
-			<div style={{ marginBottom: 20 }}>
-				<div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-					<div style={{ padding: '14px 16px', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between' }}>
-						<span style={{ fontSize: 13, fontWeight: 600 }}>Live Fleet Map</span>
-						<button className="btn-ghost" style={{ padding: '5px 14px', fontSize: 11 }} onClick={() => setScreen('shipments')}>Full View</button>
-					</div>
-					<MapViz riskLevel={simMode ? 'high' : 'low'} driverPos={0.5} />
-				</div>
-			</div>
-
+			{/* High Risk Shipments + Quick Actions */}
 			<div className="grid-2">
 				<div>
-					<div className="section-label">Shipments Needing Action</div>
-					{[
-						{ id: 'ORD-2842', route: 'Mumbai → Aurangabad', driver: 'Unassigned', risk: 'high', eta: '—' },
-						{ id: 'ORD-2841', route: 'Pune → Nashik', driver: 'Amit Shah', risk: simMode ? 'high' : 'medium', eta: simMode ? '19:10' : '18:30' },
-					].map((s, i) => (
-						<div key={i} className="card card-animate" style={{ marginBottom: 10, cursor: 'pointer' }} onClick={() => setScreen('drivers')}>
+					<div className="section-label">Shipments Needing Attention</div>
+					{highRiskShipments.length === 0 ? (
+						<div className="card empty-state">
+							<Icon name="check" size={24} color={T.green} />
+							<div style={{ marginTop: 8, color: T.green, fontWeight: 600 }}>All shipments nominal</div>
+						</div>
+					) : highRiskShipments.map((s, i) => (
+						<div key={s.shipment_id} className="card card-animate" style={{ marginBottom: 10, cursor: 'pointer', animationDelay: `${i * 80}ms` }} onClick={() => onViewShipment ? onViewShipment(s.shipment_id) : onTabChange('shipments')}>
 							<div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-								<span className="mono" style={{ fontSize: 11, color: T.grayDim }}>{s.id}</span>
-								<Chip label={s.risk === 'high' ? 'High Risk' : 'Medium'} variant={s.risk === 'high' ? 'red' : 'amber'} dot />
+								<span className="mono" style={{ fontSize: 11, color: T.grayDim }}>{s.tracking_number}</span>
+								<Chip label={String(s.current_risk_level || 'unknown').toUpperCase()} variant={riskVariant(s.current_risk_level)} dot />
 							</div>
-							<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{s.route}</div>
-							<div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: T.gray }}>
-								<span>Driver: {s.driver}</span>
-								<span>ETA: {s.eta}</span>
-							</div>
-							{s.driver === 'Unassigned' && (
-								<button className="btn-primary" style={{ width: '100%', marginTop: 10, padding: '8px', fontSize: 12 }}>Assign Driver →</button>
-							)}
+							<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Risk Score: {s.current_risk_score ?? '—'}</div>
+							<div style={{ fontSize: 12, color: T.gray }}>{s.origin_port_name || '—'} → {s.destination_port_name || '—'}</div>
+							<div style={{ fontSize: 11, color: T.grayDim, marginTop: 4 }}>Status: {fmtStatus(s.current_status)}{s.vessel_name ? ` · ${s.vessel_name}` : ''}</div>
 						</div>
 					))}
 				</div>
 
 				<div>
-					<div className="section-label">AI Recommendations</div>
+					<div className="section-label">Quick Actions</div>
 					{[
-						{ icon: 'route', title: 'Reroute ORD-2841', detail: 'Use NH-65 bypass. Saves 38 min.', color: T.teal },
-						{ icon: 'zap', title: 'Reassign Driver', detail: 'Driver 4 is 18 km closer to pickup.', color: T.amber },
-						{ icon: 'clock', title: 'Reschedule ORD-2843', detail: 'Weather clears in 2h. Delay departure.', color: T.green },
+						{ icon: 'truck', title: 'View Live Shipments', detail: `${summary.active_shipments} active shipments in transit`, tab: 'shipments' },
+						{ icon: 'alert', title: 'Check Risk Alerts', detail: `${summary.high_risk_count} high-risk shipments flagged`, tab: 'alerts' },
+						{ icon: 'zap', title: 'AI Optimizer', detail: 'ML-powered reroute recommendations', tab: 'optimize' },
 					].map((r, i) => (
-						<div key={i} className="card card-animate" style={{ marginBottom: 10, borderLeft: `3px solid ${r.color}`, animationDelay: `${i * 80}ms` }}>
-							<div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-								<Icon name={r.icon} size={14} color={r.color} />
+						<div key={i} className="card card-animate" style={{ marginBottom: 10, borderLeft: `3px solid ${T.teal}`, cursor: 'pointer', animationDelay: `${i * 80}ms` }} onClick={() => onTabChange(r.tab)}>
+							<div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+								<Icon name={r.icon} size={14} color={T.teal} />
 								<div style={{ flex: 1 }}>
 									<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 3 }}>{r.title}</div>
 									<div style={{ fontSize: 12, color: T.gray }}>{r.detail}</div>
 								</div>
-								<button className="btn-primary" style={{ marginLeft: 'auto', padding: '5px 14px', fontSize: 11, whiteSpace: 'nowrap' }}>Apply</button>
+								<Icon name="route" size={14} color={T.grayDim} />
 							</div>
 						</div>
 					))}
@@ -216,338 +260,729 @@ const LogisticsDashboard = ({ setScreen, simMode }) => {
 	);
 };
 
-// Drivers Panel
-const DriversPanel = ({ setScreen }) => {
-	const [assigned, setAssigned] = useState(false);
-	const drivers = [
-		{ name: 'Ravi Naik', id: 'DRV-04', dist: '12 km', status: 'available', rating: 4.9 },
-		{ name: 'Suresh Mehta', id: 'DRV-07', dist: '18 km', status: 'available', rating: 4.7 },
-		{ name: 'Pradeep Rao', id: 'DRV-12', dist: '24 km', status: 'en-route', rating: 4.8 },
-	];
+// ── Live Shipments Screen — CargoTrack Map View ───────────────────────────────
+const LiveShipmentsScreen = ({ shipments, loading }) => {
+	if (loading) return <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}><Spinner size="lg" /></div>;
+	return <CargoTrackMap initialShipments={shipments.length ? shipments : undefined} />;
+};
+
+// ── Driver Pool Screen ────────────────────────────────────────────────────────
+const DriverPoolScreen = ({ drivers, loading, onDriverAdded }) => {
+	const [showForm, setShowForm] = useState(false);
+	const [formData, setFormData] = useState({ name: '', email: '', phone: '', password: '' });
+	const [creating, setCreating] = useState(false);
+	const [formMsg, setFormMsg] = useState('');
+
+	const handleCreate = async () => {
+		if (!formData.name || !formData.email || !formData.password) { setFormMsg('Name, email & password required'); return; }
+		setCreating(true); setFormMsg('');
+		try {
+			await api.post(ENDPOINTS.REGISTER, {
+				full_name: formData.name,
+				email: formData.email,
+				password: formData.password,
+				role: 'driver',
+				phone_number: formData.phone || undefined,
+			});
+			setFormMsg('✅ Driver created!');
+			setFormData({ name: '', email: '', phone: '', password: '' });
+			setShowForm(false);
+			if (onDriverAdded) onDriverAdded();
+		} catch (err) {
+			setFormMsg(`❌ ${err?.response?.data?.detail || 'Failed to create driver'}`);
+		} finally { setCreating(false); }
+	};
+
+	if (loading) return <div style={{ display: 'grid', placeItems: 'center', minHeight: 200 }}><Spinner size="lg" /></div>;
 	return (
 		<div style={{ animation: 'fadeUp 0.4s ease' }}>
 			<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, paddingBottom: 20, borderBottom: `1px solid ${T.border}` }}>
 				<div>
-					<h1 style={{ fontSize: 20, fontWeight: 700, color: T.white }}>Driver Assignment</h1>
-					<div style={{ fontSize: 12, color: T.gray, marginTop: 3 }}>ORD-2842 — Select optimal driver</div>
+					<h1 style={{ fontSize: 20, fontWeight: 700, color: T.white }}>Driver Pool</h1>
+					<div style={{ fontSize: 12, color: T.gray, marginTop: 3 }}>Manage and monitor your fleet</div>
 				</div>
-				{assigned && <Chip label="Assigned ✓" variant="green" />}
-			</div>
-
-			<div className="grid-2" style={{ marginBottom: 20 }}>
-				<div className="card">
-					<div className="section-label">Shipment Brief</div>
-					{[
-						['Pickup', 'Shipper Bay 3, Mumbai'],
-						['Destination', 'Aurangabad MIDC'],
-						['Distance', '~350 km'],
-						['Weight', '480 kg'],
-						['Deadline', 'Tomorrow 09:00'],
-					].map(([k, v]) => (
-						<div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: `1px solid ${T.border}`, fontSize: 12 }}>
-							<span style={{ color: T.gray }}>{k}</span>
-							<span style={{ fontWeight: 600 }}>{v}</span>
-						</div>
-					))}
-				</div>
-				<div className="card">
-					<div className="section-label">Route Preview</div>
-					<MapViz riskLevel="low" driverPos={0.1} />
+				<div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+					<Chip label={`${drivers.length} Drivers`} variant="teal" />
+					<button className="btn-primary" style={{ padding: '8px 16px', fontSize: 12 }} onClick={() => setShowForm(!showForm)}>
+						{showForm ? '✕ Cancel' : '+ Add Driver'}
+					</button>
 				</div>
 			</div>
 
-			<div className="section-label">Available Drivers — Sorted by Distance</div>
-			{drivers.map((d, i) => (
-				<div key={i} className="card card-animate" style={{ marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', animationDelay: `${i * 100}ms` }}>
-					<div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-						<div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(0,212,180,0.1)', border: `1px solid ${T.teal}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700 }}>
-							{d.name.charAt(0)}
-						</div>
-						<div>
-							<div style={{ fontSize: 14, fontWeight: 600 }}>{d.name}</div>
-							<div style={{ fontSize: 11, color: T.gray }}>{d.id} · {d.dist} away · ⭐ {d.rating}</div>
-						</div>
+			{/* Add Driver Form */}
+			{showForm && (
+				<div className="card" style={{ marginBottom: 20, borderLeft: `3px solid ${T.teal}`, animation: 'fadeUp 0.2s ease' }}>
+					<div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14, color: T.teal }}>Create Driver Account</div>
+					<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+						{[
+							{ key: 'name', label: 'Full Name', placeholder: 'John Doe' },
+							{ key: 'email', label: 'Email', placeholder: 'driver@routeguard.com' },
+							{ key: 'phone', label: 'Phone', placeholder: '+91...' },
+							{ key: 'password', label: 'Password', placeholder: '••••••••', type: 'password' },
+						].map(f => (
+							<div key={f.key}>
+								<div style={{ fontSize: 10, color: T.gray, marginBottom: 4 }}>{f.label}</div>
+								<input
+									type={f.type || 'text'}
+									value={formData[f.key]}
+									onChange={e => setFormData(p => ({ ...p, [f.key]: e.target.value }))}
+									placeholder={f.placeholder}
+									style={{
+										width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${T.border}`,
+										background: T.navy, color: T.white, fontSize: 12, fontFamily: "'Space Grotesk', sans-serif",
+									}}
+								/>
+							</div>
+						))}
+						<button className="btn-primary" style={{ padding: '8px 20px', fontSize: 12 }} onClick={handleCreate} disabled={creating}>
+							{creating ? 'Creating…' : '✓ Create'}
+						</button>
 					</div>
-					<div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-						<Chip label={d.status} variant={d.status === 'available' ? 'green' : 'amber'} dot />
-						{d.status === 'available' && (
-							<button className="btn-primary" style={{ padding: '7px 16px', fontSize: 12 }} onClick={() => setAssigned(true)}>
-								{i === 0 ? '⚡ Assign (Best)' : 'Assign'}
-							</button>
-						)}
-					</div>
+					{formMsg && <div style={{ marginTop: 8, fontSize: 12, color: formMsg.startsWith('✅') ? T.green : T.red }}>{formMsg}</div>}
 				</div>
-			))}
+			)}
 
-			{assigned && (
-				<div className="card card-animate" style={{ background: `rgba(16,185,129,0.08)`, border: `1px solid ${T.green}`, textAlign: 'center', padding: 24, marginTop: 20 }}>
-					<div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
-					<div style={{ fontSize: 16, fontWeight: 700, color: T.green }}>Ravi Naik assigned to ORD-2842</div>
-					<div style={{ fontSize: 12, color: T.gray, marginTop: 6 }}>Driver notified. ETA pickup: 07:45 tomorrow</div>
+			{drivers.length === 0 ? (
+				<div className="card empty-state">
+					<Icon name="user" size={32} color={T.grayDim} />
+					<div style={{ marginTop: 12, fontSize: 14 }}>No drivers found — click "Add Driver" to create one</div>
+				</div>
+			) : (
+				<div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+					{drivers.map((d, i) => {
+						const dName = d.full_name || d.name || 'Unknown';
+						const dRole = d.role?.value || d.role || '';
+						return (
+							<div key={d.user_id} className="card card-animate" style={{ animationDelay: `${i * 80}ms` }}>
+								<div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+									<div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+										<div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(0,212,180,0.1)', border: `1px solid ${T.teal}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, color: T.teal }}>
+											{dName.charAt(0)}
+										</div>
+										<div>
+											<div style={{ fontSize: 14, fontWeight: 700 }}>{dName}</div>
+											<div style={{ fontSize: 11, color: T.gray }}>{d.email || d.phone_number || 'No contact'}</div>
+										</div>
+									</div>
+									<Chip label={dRole === 'driver' ? 'Driver' : fmtStatus(dRole)} variant={d.status === 'en-route' ? 'teal' : 'green'} dot />
+								</div>
+								<div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: T.gray, marginTop: 8 }}>
+									<span>Active Shipments: <strong style={{ color: T.white }}>{d.active_shipments ?? 0}</strong></span>
+									{d.company_name && <span>{d.company_name}</span>}
+								</div>
+							</div>
+						);
+					})}
 				</div>
 			)}
 		</div>
 	);
 };
 
-// Live Shipments Screen
-const LiveShipmentsScreen = () => (
-	<div style={{ animation: 'fadeUp 0.4s ease' }}>
-		<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, paddingBottom: 20, borderBottom: `1px solid ${T.border}` }}>
-			<div>
-				<h1 style={{ fontSize: 20, fontWeight: 700, color: T.white }}>Live Shipments</h1>
-				<div style={{ fontSize: 12, color: T.gray, marginTop: 3 }}>Real-time tracking of all deliveries</div>
-			</div>
-			<span style={{ fontSize: 11, color: T.teal, fontWeight: 600 }}>• 14 Active</span>
-		</div>
-		<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-			{[
-				{ id: 'ORD-2842', from: 'Mumbai', to: 'Aurangabad', progress: 35, driver: 'Unassigned', status: 'pending' },
-				{ id: 'ORD-2841', from: 'Pune', to: 'Nashik', progress: 68, driver: 'Amit Shah', status: 'in-transit' },
-				{ id: 'ORD-2843', from: 'Bangalore', to: 'Hyderabad', progress: 92, driver: 'Ravi Naik', status: 'near-delivery' },
-				{ id: 'ORD-2840', from: 'Chennai', to: 'Coimbatore', progress: 15, driver: 'Pradeep Rao', status: 'pending' },
-				{ id: 'ORD-2839', from: 'Delhi', to: 'Noida', progress: 88, driver: 'Suresh Mehta', status: 'near-delivery' },
-				{ id: 'ORD-2838', from: 'Kolkata', to: 'Darjeeling', progress: 45, driver: 'James Okafor', status: 'in-transit' },
-			].map((s, i) => (
-				<div key={i} className="card card-animate" style={{ animationDelay: `${i * 80}ms` }}>
-					<div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-						<span className="mono" style={{ fontSize: 12, color: T.teal }}>{s.id}</span>
-						<Chip label={s.status === 'in-transit' ? 'In Transit' : s.status === 'near-delivery' ? 'Near Delivery' : 'Pending'} variant={s.status === 'in-transit' ? 'teal' : s.status === 'near-delivery' ? 'green' : 'amber'} />
-					</div>
-					<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{s.from} → {s.to}</div>
-					<div style={{ marginBottom: 10 }}>
-						<div style={{ height: 6, background: T.border, borderRadius: 3, overflow: 'hidden' }}>
-							<div style={{ height: '100%', width: `${s.progress}%`, background: `linear-gradient(90deg, ${T.teal}, ${T.cyan})`, transition: 'width 0.3s' }} />
-						</div>
-						<div style={{ fontSize: 11, color: T.gray, marginTop: 6 }}>{s.progress}% completed</div>
-					</div>
-					<div style={{ fontSize: 12, color: T.gray }}>Driver: {s.driver}</div>
-				</div>
-			))}
-		</div>
-	</div>
-);
+// ── AI Optimizer Screen ───────────────────────────────────────────────────────
+const AIOptimizerScreen = ({ shipments, loading }) => {
+	const [predictions, setPredictions] = useState({});
+	const [running, setRunning] = useState({});
 
-// Driver Pool Screen
-const DriverPoolScreen = () => (
-	<div style={{ animation: 'fadeUp 0.4s ease' }}>
-		<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, paddingBottom: 20, borderBottom: `1px solid ${T.border}` }}>
-			<div>
-				<h1 style={{ fontSize: 20, fontWeight: 700, color: T.white }}>Driver Pool</h1>
-				<div style={{ fontSize: 12, color: T.gray, marginTop: 3 }}>Manage and monitor your fleet</div>
-			</div>
-			<Chip label="23 Active" variant="green" />
-		</div>
-		<div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-			{[
-				{ name: 'Ravi Naik', id: 'DRV-04', status: 'active', rating: 4.9, shipments: 3, vehicle: 'MH-02-AB-1234' },
-				{ name: 'Suresh Mehta', id: 'DRV-07', status: 'active', rating: 4.7, shipments: 2, vehicle: 'MH-02-CD-5678' },
-				{ name: 'Pradeep Rao', id: 'DRV-12', status: 'en-route', rating: 4.8, shipments: 1, vehicle: 'KA-01-EF-9012' },
-				{ name: 'James Okafor', id: 'DRV-15', status: 'break', rating: 4.6, shipments: 0, vehicle: 'TN-01-GH-3456' },
-				{ name: 'Amit Shah', id: 'DRV-08', status: 'active', rating: 4.5, shipments: 2, vehicle: 'GJ-01-IJ-7890' },
-				{ name: 'Vikram Singh', id: 'DRV-22', status: 'active', rating: 4.8, shipments: 3, vehicle: 'UP-01-KL-2345' },
-			].map((d, i) => (
-				<div key={i} className="card card-animate" style={{ animationDelay: `${i * 80}ms` }}>
-					<div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-						<div>
-							<div style={{ fontSize: 14, fontWeight: 700 }}>{d.name}</div>
-							<div style={{ fontSize: 11, color: T.gray }}>{d.id}</div>
-						</div>
-						<Chip label={d.status === 'active' ? 'Active' : d.status === 'en-route' ? 'En Route' : 'Break'} variant={d.status === 'active' ? 'green' : d.status === 'en-route' ? 'teal' : 'amber'} />
-					</div>
-					<div style={{ fontSize: 13, color: T.gray, margin: '8px 0' }}>⭐ {d.rating}</div>
-					<div style={{ fontSize: 12, color: T.gray, margin: '6px 0' }}>Shipments: {d.shipments}</div>
-					<div style={{ fontSize: 11, color: T.grayDim, mono: true }}>{d.vehicle}</div>
-				</div>
-			))}
-		</div>
-	</div>
-);
-
-// AI Optimizer Screen
-const AIOptimizerScreen = () => (
-	<div style={{ animation: 'fadeUp 0.4s ease' }}>
-		<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, paddingBottom: 20, borderBottom: `1px solid ${T.border}` }}>
-			<div>
-				<h1 style={{ fontSize: 20, fontWeight: 700, color: T.white }}>AI Optimizer</h1>
-				<div style={{ fontSize: 12, color: T.gray, marginTop: 3 }}>ML-powered logistics optimization</div>
-			</div>
-			<Chip label="5 Active" variant="teal" />
-		</div>
-		<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-			{[
-				{ title: 'Route Optimization', detail: 'Reroute ORD-2841 via NH-65', impact: 'Save 38 min', icon: 'route', confidence: 94 },
-				{ title: 'Driver Reassignment', detail: 'DRV-04 is 18km closer to pickup', impact: 'ETA -25 min', icon: 'user', confidence: 87 },
-				{ title: 'Load Balancing', detail: 'Redistribute 3 shipments', impact: 'Reduce wait 45 min', icon: 'box', confidence: 91 },
-				{ title: 'Predictive Delay', detail: 'ORD-2843 traffic ahead detected', impact: 'Alert driver now', icon: 'alert', confidence: 85 },
-				{ title: 'Demand Forecasting', detail: 'Expect 8 shipments next 2hrs', impact: 'Pre-stage 2 drivers', icon: 'activity', confidence: 92 },
-			].map((r, i) => (
-				<div key={i} className="card card-animate" style={{ animationDelay: `${i * 80}ms`, borderLeft: `3px solid ${T.teal}` }}>
-					<div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-						<div style={{ fontSize: 13, fontWeight: 600 }}>{r.title}</div>
-						<div style={{ fontSize: 11, color: T.teal, fontWeight: 700 }}>{r.confidence}%</div>
-					</div>
-					<div style={{ fontSize: 12, color: T.gray, marginBottom: 8 }}>{r.detail}</div>
-					<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-						<span style={{ fontSize: 11, color: T.green, fontWeight: 600 }}>↓ {r.impact}</span>
-						<button className="btn-primary" style={{ padding: '5px 12px', fontSize: 11 }}>Apply</button>
-					</div>
-				</div>
-			))}
-		</div>
-		<div className="card" style={{ marginTop: 20, borderLeft: `3px solid ${T.amber}` }}>
-			<div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>📊 Optimization Impact</div>
-			<div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-				<div>
-					<div style={{ fontSize: 11, color: T.gray }}>Avg Time Saved</div>
-					<div style={{ fontSize: 16, fontWeight: 700, color: T.teal }}>34 min</div>
-				</div>
-				<div>
-					<div style={{ fontSize: 11, color: T.gray }}>Cost Reduction</div>
-					<div style={{ fontSize: 16, fontWeight: 700, color: T.green }}>12.3%</div>
-				</div>
-				<div>
-					<div style={{ fontSize: 11, color: T.gray }}>Success Rate</div>
-					<div style={{ fontSize: 16, fontWeight: 700, color: T.cyan }}>89%</div>
-				</div>
-				<div>
-					<div style={{ fontSize: 11, color: T.gray }}>This Month</div>
-					<div style={{ fontSize: 16, fontWeight: 700, color: T.amber }}>424 applied</div>
-				</div>
-			</div>
-		</div>
-	</div>
-);
-
-// Risk Alerts Screen
-const RiskAlertsScreen = () => (
-	<div style={{ animation: 'fadeUp 0.4s ease' }}>
-		<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, paddingBottom: 20, borderBottom: `1px solid ${T.border}` }}>
-			<div>
-				<h1 style={{ fontSize: 20, fontWeight: 700, color: T.white }}>Risk Alerts</h1>
-				<div style={{ fontSize: 12, color: T.gray, marginTop: 3 }}>Monitor and manage operational risks</div>
-			</div>
-			<Chip label="7 Unresolved" variant="red" />
-		</div>
-		<div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
-			{[
-				{ severity: 'critical', title: 'Traffic Congestion on MH-48', detail: 'ORD-2841: ETA delayed +45 min', time: '12 min ago', shipment: 'ORD-2841' },
-				{ severity: 'high', title: 'Driver Fatigue Warning', detail: 'DRV-07 (Suresh Mehta) - 8.5 hrs driving', time: '8 min ago', shipment: 'ORD-2843' },
-				{ severity: 'high', title: 'Weather Alert', detail: 'Heavy rain in Nashik region', time: '18 min ago', shipment: 'ORD-2841' },
-				{ severity: 'medium', title: 'Low Fuel Warning', detail: 'DRV-12 (Pradeep) - 12% fuel remaining', time: '25 min ago', shipment: 'ORD-2840' },
-				{ severity: 'medium', title: 'Pickup Delay', detail: 'Shipper Bay 3 delayed - cargo not ready', time: '35 min ago', shipment: 'ORD-2842' },
-				{ severity: 'low', title: 'Vehicle Maintenance Due', detail: 'DRV-15 vehicle: oil change in 500 km', time: '2 hrs ago', shipment: 'N/A' },
-				{ severity: 'low', title: 'Route Deviation', detail: 'DRV-04 took alternate route (approved)', time: '3 hrs ago', shipment: 'ORD-2839' },
-			].map((a, i) => (
-				<div key={i} className="alert-card" style={{ borderLeft: `4px solid ${a.severity === 'critical' ? T.red : a.severity === 'high' ? T.amber : a.severity === 'medium' ? T.amber : T.gray}`, background: a.severity === 'critical' ? `rgba(239,68,68,.08)` : a.severity === 'high' ? `rgba(245,158,11,.08)` : `rgba(138,155,181,.05)` }}>
-					<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-						<div style={{ flex: 1 }}>
-							<div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6 }}>
-								<span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: a.severity === 'critical' ? T.red : a.severity === 'high' ? T.amber : T.gray }}>{a.severity}</span>
-								<span className="mono" style={{ fontSize: 10, color: T.grayDim }}>{a.shipment}</span>
-							</div>
-							<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{a.title}</div>
-							<div style={{ fontSize: 12, color: T.gray, marginBottom: 6 }}>{a.detail}</div>
-							<div style={{ fontSize: 11, color: T.grayDim }}>{a.time}</div>
-						</div>
-						<button className="btn-primary" style={{ padding: '6px 14px', fontSize: 11, whiteSpace: 'nowrap', marginLeft: 10 }}>Resolve</button>
-					</div>
-				</div>
-			))}
-		</div>
-	</div>
-);
-
-// Navigation Tabs
-const NavTabs = ({ activeTab, setActiveTab }) => (
-	<div style={{ display: 'flex', gap: 8, marginBottom: 24, paddingBottom: 16, borderBottom: `1px solid ${T.border}`, overflowX: 'auto', paddingLeft: 32, paddingRight: 32 }}>
-		{[
-			{ id: 'dashboard', label: 'Control Tower', icon: 'activity' },
-			{ id: 'shipments', label: 'Live Shipments', icon: 'truck' },
-			{ id: 'drivers', label: 'Driver Pool', icon: 'user' },
-			{ id: 'optimize', label: 'AI Optimizer', icon: 'zap' },
-			{ id: 'alerts', label: 'Risk Alerts', icon: 'alert' },
-		].map((tab) => (
-			<button
-				key={tab.id}
-				style={{
-					display: 'flex',
-					alignItems: 'center',
-					gap: 8,
-					padding: '10px 16px',
-					border: activeTab === tab.id ? `2px solid ${T.teal}` : `1px solid ${T.border}`,
-					background: activeTab === tab.id ? `rgba(0,212,180,.1)` : 'transparent',
-					color: activeTab === tab.id ? T.teal : T.gray,
-					borderRadius: 8,
-					cursor: 'pointer',
-					fontSize: 12,
-					fontWeight: activeTab === tab.id ? 700 : 500,
-					transition: 'all 0.2s',
-					fontFamily: "'Space Grotesk', sans-serif",
-					whiteSpace: 'nowrap',
-				}}
-				onClick={() => setActiveTab(tab.id)}
-				onMouseEnter={(e) => {
-					if (activeTab !== tab.id) {
-						e.target.style.borderColor = T.teal;
-						e.target.style.color = T.teal;
-					}
-				}}
-				onMouseLeave={(e) => {
-					if (activeTab !== tab.id) {
-						e.target.style.borderColor = T.border;
-						e.target.style.color = T.gray;
-					}
-				}}
-			>
-				<Icon name={tab.icon} size={14} color="currentColor" />
-				{tab.label}
-			</button>
-		))}
-	</div>
-);
-
-export default function ManagerDashboard() {
-	const [screen, setScreen] = useState('logistics');
-	const [activeTab, setActiveTab] = useState('dashboard');
-	const [simMode, setSimMode] = useState(false);
-	const [loading, setLoading] = useState(false);
-	const [usingDummy, setUsingDummy] = useState(true);
-	const [theme] = useState(() => localStorage.getItem('theme') || 'dark');
-
-	useEffect(() => {
-		document.documentElement.setAttribute('data-theme', theme);
-	}, [theme]);
-
-	useEffect(() => {
-		setLoading(false);
+	const runPrediction = useCallback(async (shipmentId) => {
+		// Guard: never call ML on dummy/demo shipment IDs
+		if (String(shipmentId).startsWith('demo-')) {
+			setPredictions(prev => ({ ...prev, [shipmentId]: { error: true, demo: true } }));
+			return;
+		}
+		setRunning(prev => ({ ...prev, [shipmentId]: true }));
+		try {
+			const res = await api.get(ENDPOINTS.ML_PREDICTION(shipmentId));
+			setPredictions(prev => ({ ...prev, [shipmentId]: res.data }));
+		} catch {
+			setPredictions(prev => ({ ...prev, [shipmentId]: { error: true } }));
+		} finally {
+			setRunning(prev => ({ ...prev, [shipmentId]: false }));
+		}
 	}, []);
 
-	// Map active tab to screen
-	const displayScreen = activeTab === 'dashboard' ? 'logistics' : activeTab;
+	const [approving, setApproving] = useState({});
+	const approveReroute = useCallback(async (shipmentId, routeId) => {
+		setApproving(prev => ({ ...prev, [routeId]: true }));
+		try {
+			await api.post(`${ENDPOINTS.APPROVE_REROUTE(shipmentId)}?route_id=${routeId}`);
+			setPredictions(prev => {
+				const p = { ...prev[shipmentId] };
+				if (p.alternate_routes) {
+					p.alternate_routes = p.alternate_routes.map(r =>
+						r.route_id === routeId ? { ...r, _approved: true } : r
+					);
+				}
+				return { ...prev, [shipmentId]: p };
+			});
+		} catch {
+			// silent
+		} finally {
+			setApproving(prev => ({ ...prev, [routeId]: false }));
+		}
+	}, []);
 
-	if (loading) {
-		return (
-			<div className="card" style={{ minHeight: 240, display: 'grid', placeItems: 'center' }}>
-				<Spinner size="lg" />
+	if (loading) return <div style={{ display: 'grid', placeItems: 'center', minHeight: 200 }}><Spinner size="lg" /></div>;
+
+	const candidates = shipments.filter(s => s.current_status !== 'delivered' && s.current_status !== 'cancelled');
+	const highRisk = candidates.filter(s => ['high', 'critical'].includes(String(s.current_risk_level || '').toLowerCase()));
+
+	const runAll = async () => {
+		for (const s of candidates.filter(c => !predictions[c.shipment_id])) {
+			if (String(s.shipment_id).startsWith('demo-')) continue;
+			await runPrediction(s.shipment_id);
+		}
+	};
+
+	return (
+		<div style={{ animation: 'fadeUp 0.4s ease' }}>
+			<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, paddingBottom: 20, borderBottom: `1px solid ${T.border}` }}>
+				<div>
+					<h1 style={{ fontSize: 20, fontWeight: 700, color: T.white }}>AI Optimizer</h1>
+					<div style={{ fontSize: 12, color: T.gray, marginTop: 3 }}>ML-powered route & reroute intelligence — real XGBoost, RF & GB models</div>
+				</div>
+				<div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+					<Chip label={`${candidates.length} Active`} variant="teal" />
+					{highRisk.length > 0 && <Chip label={`${highRisk.length} High Risk`} variant="red" />}
+					<button className="btn-primary" style={{ padding: '8px 16px', fontSize: 12 }} onClick={runAll}>⚡ Run All ML</button>
+				</div>
 			</div>
-		);
-	}
+
+			{/* Model Stats Bar */}
+			<div className="card" style={{ marginBottom: 20, borderLeft: `3px solid ${T.teal}` }}>
+				<div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
+					{[
+						{ label: 'XGBoost R²', value: '96.48%', color: T.teal },
+						{ label: 'RF Delay MAE', value: '2.97h', color: T.cyan },
+						{ label: 'GB Reroute Acc.', value: '99.85%', color: T.green },
+						{ label: 'Training Rows', value: '298K+', color: T.amber },
+					].map(m => (
+						<div key={m.label}>
+							<div style={{ fontSize: 11, color: T.gray }}>{m.label}</div>
+							<div style={{ fontSize: 16, fontWeight: 700, color: m.color }}>{m.value}</div>
+						</div>
+					))}
+				</div>
+			</div>
+
+			{candidates.length === 0 ? (
+				<div className="card empty-state">
+					<Icon name="check" size={32} color={T.green} />
+					<div style={{ marginTop: 12, color: T.green, fontWeight: 600 }}>No shipments need optimization right now</div>
+				</div>
+			) : candidates.map((s, i) => {
+				const pred = predictions[s.shipment_id];
+				const isRunning = running[s.shipment_id];
+				return (
+					<div key={s.shipment_id} className="card card-animate" style={{ marginBottom: 16, animationDelay: `${i * 80}ms` }}>
+						<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+							<div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+								<span className="mono" style={{ fontSize: 12, color: T.teal }}>{s.tracking_number}</span>
+								<Chip label={String(s.current_risk_level || '').toUpperCase()} variant={riskVariant(s.current_risk_level)} dot />
+							</div>
+							{!pred && (
+								<button className="btn-primary" style={{ padding: '6px 16px', fontSize: 12 }} onClick={() => runPrediction(s.shipment_id)} disabled={isRunning}>
+									{isRunning ? 'Running ML…' : '⚡ Run ML Analysis'}
+								</button>
+							)}
+						</div>
+
+						{pred && !pred.error && (
+							<div>
+								<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 14 }}>
+									<div className="card" style={{ padding: 12 }}>
+										<div style={{ fontSize: 11, color: T.gray }}>Risk Score</div>
+										<div style={{ fontSize: 18, fontWeight: 700, color: T.red }}>{pred.model_outputs?.risk_score ?? '—'}</div>
+									</div>
+									<div className="card" style={{ padding: 12 }}>
+										<div style={{ fontSize: 11, color: T.gray }}>Predicted Delay</div>
+										<div style={{ fontSize: 18, fontWeight: 700, color: T.amber }}>{pred.model_outputs?.predicted_delay_hr ?? 0}h</div>
+									</div>
+									<div className="card" style={{ padding: 12 }}>
+										<div style={{ fontSize: 11, color: T.gray }}>Decision</div>
+										<div style={{ fontSize: 18, fontWeight: 700, color: pred.model_outputs?.reroute_decision === 'REROUTE' ? T.red : T.green }}>
+											{pred.model_outputs?.reroute_decision ?? '—'}
+										</div>
+									</div>
+								</div>
+								{pred.alternate_routes?.length > 0 && (
+									<div>
+										<div className="section-label">Alternate Routes</div>
+										{pred.alternate_routes.slice(0, 3).map((r) => (
+											<div key={r.route_id} className="card" style={{ marginBottom: 8, borderLeft: `3px solid ${r.recommended ? T.green : T.border}`, padding: '10px 14px' }}>
+												<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+													<div>
+														<div style={{ fontSize: 13, fontWeight: 600 }}>{r.name}</div>
+														<div style={{ fontSize: 11, color: T.gray }}>Extra cost: ${Number(r.extra_cost_usd).toFixed(0)} · Delay: {Number(r.delay_hours).toFixed(1)}h</div>
+													</div>
+													<div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+														{r.recommended && <Chip label="Recommended" variant="green" />}
+														{r._approved ? (
+															<Chip label="Approved ✓" variant="green" />
+														) : (
+															<button className="btn-primary" style={{ padding: '5px 12px', fontSize: 11 }} onClick={() => approveReroute(s.shipment_id, r.route_id)} disabled={approving[r.route_id]}>
+																{approving[r.route_id] ? '…' : 'Approve'}
+															</button>
+														)}
+													</div>
+												</div>
+											</div>
+										))}
+									</div>
+								)}
+								{pred.financial_impact && (
+									<div style={{ display: 'flex', gap: 12, marginTop: 10, fontSize: 12, color: T.gray }}>
+										<span>Expected loss avoided: <strong style={{ color: T.green }}>${Number(pred.financial_impact.net_saving_usd).toLocaleString()}</strong></span>
+									</div>
+								)}
+							</div>
+						)}
+						{pred?.error && (
+							<div style={{ fontSize: 12, color: pred.demo ? T.amber : T.red }}>
+								{pred.demo
+									? '⚠ Connect backend to run real ML analysis on live shipments.'
+									: 'Failed to get ML prediction. Backend may be unreachable or shipment has no route yet.'}
+							</div>
+						)}
+					</div>
+				);
+			})}
+		</div>
+	);
+};
+
+// ── Risk Alerts Screen ────────────────────────────────────────────────────────
+const RiskAlertsScreen = ({ alerts, loading, onResolve }) => {
+	const [resolving, setResolving] = useState({});
+
+	const handleResolve = async (alertId) => {
+		setResolving(prev => ({ ...prev, [alertId]: true }));
+		await onResolve(alertId);
+		setResolving(prev => ({ ...prev, [alertId]: false }));
+	};
+
+	if (loading) return <div style={{ display: 'grid', placeItems: 'center', minHeight: 200 }}><Spinner size="lg" /></div>;
+
+	const severityColor = (sev) => {
+		const s = String(sev || '').toLowerCase();
+		if (s === 'critical') return T.red;
+		if (s === 'high') return T.amber;
+		if (s === 'medium') return T.amber;
+		return T.gray;
+	};
+
+	return (
+		<div style={{ animation: 'fadeUp 0.4s ease' }}>
+			<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, paddingBottom: 20, borderBottom: `1px solid ${T.border}` }}>
+				<div>
+					<h1 style={{ fontSize: 20, fontWeight: 700, color: T.white }}>Risk Alerts</h1>
+					<div style={{ fontSize: 12, color: T.gray, marginTop: 3 }}>Monitor and resolve operational risks</div>
+				</div>
+				<Chip label={`${alerts.length} Unresolved`} variant={alerts.length > 0 ? 'red' : 'green'} />
+			</div>
+
+			{alerts.length === 0 ? (
+				<div className="card empty-state">
+					<Icon name="check" size={32} color={T.green} />
+					<div style={{ marginTop: 12, color: T.green, fontWeight: 600 }}>No unresolved alerts — all clear!</div>
+				</div>
+			) : (
+				<div style={{ display: 'grid', gap: 12 }}>
+					{alerts.map((a, i) => (
+						<div key={a.alert_id} className="card card-animate" style={{
+							borderLeft: `4px solid ${severityColor(a.severity)}`,
+							background: String(a.severity).toLowerCase() === 'critical' ? 'rgba(239,68,68,.06)' : String(a.severity).toLowerCase() === 'high' ? 'rgba(245,158,11,.06)' : `rgba(26,42,69,.4)`,
+							animationDelay: `${i * 60}ms`,
+						}}>
+							<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+								<div style={{ flex: 1 }}>
+									<div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6 }}>
+										<span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: severityColor(a.severity) }}>{a.severity}</span>
+										{a.tracking_number && <span className="mono" style={{ fontSize: 10, color: T.grayDim }}>{a.tracking_number}</span>}
+									</div>
+									<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{a.message}</div>
+									<div style={{ fontSize: 11, color: T.grayDim }}>{timeAgo(a.created_at)}</div>
+								</div>
+								<button
+									className="btn-primary"
+									style={{ padding: '6px 14px', fontSize: 11, whiteSpace: 'nowrap', marginLeft: 10 }}
+									onClick={() => handleResolve(a.alert_id)}
+									disabled={resolving[a.alert_id]}
+									id={`resolve-alert-${a.alert_id}`}
+								>
+									{resolving[a.alert_id] ? 'Resolving…' : 'Resolve'}
+								</button>
+							</div>
+						</div>
+					))}
+				</div>
+			)}
+		</div>
+	);
+};
+
+// ── Consignments Screen ───────────────────────────────────────────────────────
+const CONSIGNMENT_FILTERS = ['all', 'created', 'picked_up', 'in_transit', 'at_port', 'delayed', 'delivered'];
+const ConsignmentsScreen = ({ shipments, drivers, loading, onViewShipment, onAccept, onAssign }) => {
+	const [filter, setFilter] = useState('all');
+	const [accepting, setAccepting] = useState({});
+	const [assigningId, setAssigningId] = useState(null);
+	const [selDriver, setSelDriver] = useState('');
+	const [selVessel, setSelVessel] = useState('');
+	const [saving, setSaving] = useState(false);
+
+	const filtered = shipments.filter(s => filter === 'all' || s.current_status === filter);
+
+	const handleAccept = async (shipmentId) => {
+		setAccepting(p => ({ ...p, [shipmentId]: true }));
+		try { await onAccept(shipmentId); } catch {} finally { setAccepting(p => ({ ...p, [shipmentId]: false })); }
+	};
+
+	const handleAssign = async (shipmentId) => {
+		if (!selDriver && !selVessel) return;
+		setSaving(true);
+		try {
+			await onAssign(shipmentId, selDriver, selVessel);
+			setAssigningId(null);
+			setSelDriver('');
+			setSelVessel('');
+		} catch {} finally { setSaving(false); }
+	};
+
+	const availableDrivers = (drivers || []).filter(d => {
+		const role = d.role?.value || d.role || '';
+		return role === 'driver';
+	});
+
+	if (loading) return <div style={{ display: 'grid', placeItems: 'center', minHeight: 200 }}><Spinner size="lg" /></div>;
+
+	return (
+		<div style={{ animation: 'fadeUp 0.4s ease' }}>
+			<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, paddingBottom: 20, borderBottom: `1px solid ${T.border}` }}>
+				<div>
+					<h1 style={{ fontSize: 20, fontWeight: 700, color: T.white }}>Consignments</h1>
+					<div style={{ fontSize: 12, color: T.gray, marginTop: 3 }}>Track, accept, assign drivers & manage shipments</div>
+				</div>
+				<Chip label={`${shipments.length} Total`} variant="teal" />
+			</div>
+
+			{/* Status filter pills */}
+			<div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+				{CONSIGNMENT_FILTERS.map(f => {
+					const cnt = f === 'all' ? shipments.length : shipments.filter(s => s.current_status === f).length;
+					const active = filter === f;
+					return (
+						<button key={f} onClick={() => setFilter(f)} style={{
+							padding: '6px 14px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+							border: active ? `2px solid ${T.teal}` : `1px solid ${T.border}`,
+							background: active ? 'rgba(0,212,180,.12)' : 'transparent',
+							color: active ? T.teal : T.gray, fontFamily: "'Space Grotesk', sans-serif", transition: 'all .2s',
+						}}>
+							{fmtStatus(f)} <span style={{ opacity: .6, marginLeft: 4 }}>{cnt}</span>
+						</button>
+					);
+				})}
+			</div>
+
+			{filtered.length === 0 ? (
+				<div className="card empty-state"><Icon name="package" size={32} color={T.grayDim} /><div style={{ marginTop: 12, fontSize: 14 }}>No consignments match this filter</div></div>
+			) : (
+				<div style={{ display: 'grid', gap: 12 }}>
+					{filtered.map((s, i) => (
+						<div key={s.shipment_id}>
+							<div className="card card-animate" style={{ animationDelay: `${i * 50}ms`, cursor: 'pointer', borderLeft: `3px solid ${s.current_risk_level === 'critical' ? T.red : s.current_risk_level === 'high' ? T.amber : T.teal}` }} onClick={() => onViewShipment(s.shipment_id)}>
+								<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+									<div style={{ flex: 1 }}>
+										<div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6 }}>
+											<span className="mono" style={{ fontSize: 12, color: T.teal }}>{s.tracking_number}</span>
+											<Chip label={fmtStatus(s.current_status)} variant={riskVariant(s.current_risk_level)} />
+										</div>
+										<div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{s.origin_port_name || '—'} → {s.destination_port_name || '—'}</div>
+										<div style={{ fontSize: 11, color: T.gray }}>
+											{s.shipper_name && <span>Shipper: {s.shipper_name} · </span>}
+											{s.cargo_type && <span>{fmtStatus(s.cargo_type)} · </span>}
+											{s.declared_value && <span>${Number(s.declared_value).toLocaleString()} · </span>}
+											Risk: {s.current_risk_score ?? '—'}
+										</div>
+										{/* Show assigned resources */}
+										<div style={{ fontSize: 11, color: T.grayDim, marginTop: 4 }}>
+											{s.driver_name ? <span style={{ color: T.green }}>🚛 {s.driver_name}</span> : <span style={{ color: T.amber }}>⚠ No driver</span>}
+											{s.vessel_name && <span style={{ marginLeft: 8 }}>🚢 {s.vessel_name}</span>}
+										</div>
+									</div>
+									<div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0, marginLeft: 12 }}>
+										{s.current_status === 'created' && (
+											<button className="btn-primary" style={{ padding: '6px 16px', fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleAccept(s.shipment_id); }} disabled={accepting[s.shipment_id]}>
+												{accepting[s.shipment_id] ? 'Accepting…' : '✓ Accept'}
+											</button>
+										)}
+										{!s.driver_name && s.current_status !== 'delivered' && (
+											<button className="btn-ghost" style={{ padding: '6px 12px', fontSize: 11, color: T.amber }} onClick={(e) => { e.stopPropagation(); setAssigningId(assigningId === s.shipment_id ? null : s.shipment_id); setSelDriver(''); setSelVessel(''); }}>
+												{assigningId === s.shipment_id ? '✕ Close' : '⚡ Assign'}
+											</button>
+										)}
+										<button className="btn-ghost" style={{ padding: '6px 12px', fontSize: 11 }} onClick={(e) => { e.stopPropagation(); onViewShipment(s.shipment_id); }}>Details →</button>
+									</div>
+								</div>
+							</div>
+
+							{/* Inline Assignment Panel */}
+							{assigningId === s.shipment_id && (
+								<div className="card" style={{ marginTop: -1, borderTop: `2px solid ${T.teal}`, borderRadius: '0 0 12px 12px', padding: '16px 20px', animation: 'fadeUp 0.2s ease' }}>
+									<div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, color: T.teal }}>Assign Resources — {s.tracking_number}</div>
+									<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+										{/* Route Info */}
+										<div>
+											<div style={{ fontSize: 10, color: T.gray, marginBottom: 4 }}>ROUTE</div>
+											<div style={{ fontSize: 12, color: T.white, fontWeight: 600 }}>{s.origin_port_name || '—'}</div>
+											<div style={{ fontSize: 10, color: T.grayDim }}>↓ {s.route_distance_km ? `${s.route_distance_km} km` : '—'} · {s.route_duration_hr ? `${s.route_duration_hr}h` : '—'}</div>
+											<div style={{ fontSize: 12, color: T.white, fontWeight: 600 }}>{s.destination_port_name || '—'}</div>
+										</div>
+
+										{/* Driver Select */}
+										<div>
+											<div style={{ fontSize: 10, color: T.gray, marginBottom: 4 }}>DRIVER</div>
+											<select value={selDriver} onChange={e => setSelDriver(e.target.value)} style={{
+												width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${T.border}`,
+												background: T.navy, color: T.white, fontSize: 12, fontFamily: "'Space Grotesk', sans-serif",
+											}}>
+												<option value="">— Select Driver —</option>
+												{availableDrivers.map(d => (
+													<option key={d.user_id} value={d.user_id}>{d.name} ({d.email})</option>
+												))}
+											</select>
+										</div>
+
+										{/* Vessel Select */}
+										<div>
+											<div style={{ fontSize: 10, color: T.gray, marginBottom: 4 }}>VESSEL</div>
+											<select value={selVessel} onChange={e => setSelVessel(e.target.value)} style={{
+												width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${T.border}`,
+												background: T.navy, color: T.white, fontSize: 12, fontFamily: "'Space Grotesk', sans-serif",
+											}}>
+												<option value="">— Select Vessel —</option>
+												<option value="auto">Auto-assign Best Available</option>
+											</select>
+										</div>
+
+										{/* Assign Button */}
+										<button className="btn-primary" style={{ padding: '8px 20px', fontSize: 12 }} disabled={saving || (!selDriver && !selVessel)} onClick={() => handleAssign(s.shipment_id)}>
+											{saving ? 'Saving…' : '✓ Assign'}
+										</button>
+									</div>
+								</div>
+							)}
+						</div>
+					))}
+				</div>
+			)}
+		</div>
+	);
+};
+
+// ── Main Export ───────────────────────────────────────────────────────────────
+export default function ManagerDashboard() {
+	const navigate = useNavigate();
+	const [searchParams, setSearchParams] = useSearchParams();
+	const initialTab = searchParams.get('tab');
+	const [activeTab, setActiveTab] = useState(
+		TABS.some((t) => t.id === initialTab) ? initialTab : 'dashboard'
+	);
+	const [usingDummy, setUsingDummy] = useState(true);
+
+	const handleTabChange = useCallback((nextTab) => {
+		const safeTab = TABS.some((t) => t.id === nextTab) ? nextTab : 'dashboard';
+		setActiveTab(safeTab);
+		if (safeTab === 'dashboard') {
+			setSearchParams({}, { replace: true });
+			return;
+		}
+		setSearchParams({ tab: safeTab }, { replace: true });
+	}, [setSearchParams]);
+
+	// Data state
+	const [summary, setSummary] = useState(DUMMY_SUMMARY);
+	const [shipments, setShipments] = useState(DUMMY_SHIPMENTS);
+	const [drivers, setDrivers] = useState(DUMMY_DRIVERS);
+	const [alerts, setAlerts] = useState(DUMMY_ALERTS);
+
+	// Loading state per section
+	const [loadingShipments, setLoadingShipments] = useState(false);
+	const [loadingDrivers, setLoadingDrivers] = useState(false);
+	const [loadingAlerts, setLoadingAlerts] = useState(false);
+
+	// Manager dashboard is always dark — force it regardless of stored theme
+	useEffect(() => {
+		document.documentElement.setAttribute('data-theme', 'dark');
+		document.documentElement.style.background = T.navy;
+		document.body.style.background = T.navy;
+		return () => {
+			// Restore on unmount
+			const stored = localStorage.getItem('theme') || 'dark';
+			document.documentElement.setAttribute('data-theme', stored);
+			document.documentElement.style.background = '';
+			document.body.style.background = '';
+		};
+	}, []);
+
+	useEffect(() => {
+		const tabFromUrl = searchParams.get('tab');
+		const safeTab = TABS.some((t) => t.id === tabFromUrl) ? tabFromUrl : 'dashboard';
+		if (safeTab !== activeTab) {
+			setActiveTab(safeTab);
+		}
+	}, [activeTab, searchParams]);
+
+	// Lock/unlock parent scroll when map tab is active
+	useEffect(() => {
+		const contentEl = document.querySelector('.app-shell__content');
+		if (!contentEl) return;
+		if (activeTab === 'shipments') {
+			contentEl.style.overflow = 'hidden';
+			contentEl.style.padding = '0';
+		} else {
+			contentEl.style.overflow = '';
+			contentEl.style.padding = '';
+		}
+		return () => {
+			contentEl.style.overflow = '';
+			contentEl.style.padding = '';
+		};
+	}, [activeTab]);
+
+	useEffect(() => {
+		const init = async () => {
+			try {
+				const [summaryRes, shipmentsRes] = await Promise.all([
+					api.get(ENDPOINTS.MANAGER_SUMMARY),
+					api.get(ENDPOINTS.ALL_SHIPMENTS),
+				]);
+				setSummary(summaryRes.data);
+				setShipments(shipmentsRes.data || []);
+				setUsingDummy(false);
+			} catch {
+				// backend unreachable — keep dummy data, banner stays visible
+			}
+		};
+		init();
+	}, []);
+
+	// Lazy-load drivers when Driver Pool tab opens
+	useEffect(() => {
+		if (!['drivers', 'consignments'].includes(activeTab) || !usingDummy === false && drivers !== DUMMY_DRIVERS) return;
+		if (usingDummy) return; // still on dummy, skip
+		const fetchDrivers = async () => {
+			setLoadingDrivers(true);
+			try {
+				const res = await api.get(ENDPOINTS.MANAGER_DRIVERS);
+				setDrivers(res.data || []);
+			} catch {
+				// keep existing
+			} finally {
+				setLoadingDrivers(false);
+			}
+		};
+		fetchDrivers();
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [activeTab]);
+
+	// Lazy-load alerts when Alerts tab opens
+	useEffect(() => {
+		if (activeTab !== 'alerts') return;
+		const fetchAlerts = async () => {
+			setLoadingAlerts(true);
+			try {
+				const res = await api.get(ENDPOINTS.ACTIVE_ALERTS);
+				setAlerts(res.data || []);
+				setUsingDummy(false);
+			} catch {
+				// keep existing
+			} finally {
+				setLoadingAlerts(false);
+			}
+		};
+		fetchAlerts();
+	}, [activeTab]);
+
+	// Refresh shipments when Shipments or Optimizer tab opens
+	useEffect(() => {
+		if (!['shipments', 'optimize', 'consignments'].includes(activeTab)) return;
+		if (usingDummy) return;
+		const fetchShipments = async () => {
+			setLoadingShipments(true);
+			try {
+				const res = await api.get(ENDPOINTS.ALL_SHIPMENTS);
+				setShipments(res.data || []);
+			} catch {
+				// keep
+			} finally {
+				setLoadingShipments(false);
+			}
+		};
+		fetchShipments();
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [activeTab]);
+
+	// Resolve alert handler
+	const handleResolve = useCallback(async (alertId) => {
+		try {
+			await api.put(ENDPOINTS.RESOLVE_ALERT(alertId), {});
+			setAlerts(prev => prev.filter(a => a.alert_id !== alertId));
+		} catch {
+			// silent fail
+		}
+	}, []);
 
 	return (
 		<>
 			<style>{css}</style>
 			<DemoModeBanner usingDummy={usingDummy} />
-			<div style={{ color: T.white, width: '100%', minHeight: '100vh', background: T.navy }}>
-				<NavTabs activeTab={activeTab} setActiveTab={setActiveTab} />
-				<div style={{ padding: '0 32px 28px 32px', overflow: 'auto' }}>
-					{displayScreen === 'logistics' && <LogisticsDashboard setScreen={setScreen} simMode={simMode} />}
-					{displayScreen === 'shipments' && <LiveShipmentsScreen />}
-					{displayScreen === 'drivers' && (activeTab === 'drivers' ? <DriverPoolScreen /> : <DriversPanel setScreen={setScreen} />)}
-					{displayScreen === 'optimize' && <AIOptimizerScreen />}
-					{displayScreen === 'alerts' && <RiskAlertsScreen />}
-				</div>
+			<div style={{ color: T.white, width: '100%', background: T.navy, fontFamily: "'Space Grotesk', sans-serif", display: 'flex', flexDirection: 'column', height: activeTab === 'shipments' ? '100%' : 'auto', minHeight: activeTab === 'shipments' ? 0 : '100vh' }}>
+				<NavTabs activeTab={activeTab} onTabChange={handleTabChange} />
+
+				{/* Map tab: full bleed — no padding wrapper */}
+				{activeTab === 'shipments' && (
+					<div style={{ flex: 1, minHeight: 0 }}>
+						<LiveShipmentsScreen shipments={shipments} loading={loadingShipments} />
+					</div>
+				)}
+
+				{/* All other tabs: padded content area */}
+				{activeTab !== 'shipments' && (
+					<div style={{ padding: '24px 32px 40px' }}>
+						{activeTab === 'dashboard' && (
+							<ControlTower summary={summary} shipments={shipments} usingDummy={usingDummy} onTabChange={handleTabChange} onViewShipment={(id) => navigate(`/manager/shipments/${id}`)} />
+						)}
+						{activeTab === 'drivers' && (
+							<DriverPoolScreen drivers={drivers} loading={loadingDrivers} onDriverAdded={async () => { try { const res = await api.get(ENDPOINTS.MANAGER_DRIVERS); setDrivers(res.data || []); } catch {} }} />
+						)}
+						{activeTab === 'consignments' && (
+						<ConsignmentsScreen
+							shipments={shipments}
+							drivers={drivers}
+							loading={loadingShipments}
+							onViewShipment={(id) => navigate(`/manager/shipments/${id}`)}
+							onAccept={async (id) => { try { await api.put(ENDPOINTS.UPDATE_STATUS(id), { new_status: 'picked_up' }); setShipments(prev => prev.map(s => s.shipment_id === id ? { ...s, current_status: 'picked_up' } : s)); } catch {} }}
+							onAssign={async (id, driverId, vesselId) => {
+								const params = new URLSearchParams();
+								if (driverId) params.append('driver_id', driverId);
+								if (vesselId && vesselId !== 'auto') params.append('vessel_id', vesselId);
+								await api.post(`${ENDPOINTS.ASSIGN_RESOURCES(id)}?${params.toString()}`);
+								// Refresh to show updated assignment
+								try { const res = await api.get(ENDPOINTS.ALL_SHIPMENTS); setShipments(res.data || []); } catch {}
+							}}
+						/>
+					)}
+						{activeTab === 'optimize' && (
+							<AIOptimizerScreen shipments={shipments} loading={loadingShipments} />
+						)}
+						{activeTab === 'alerts' && (
+							<RiskAlertsScreen alerts={alerts} loading={loadingAlerts} onResolve={handleResolve} />
+						)}
+					</div>
+				)}
 			</div>
 		</>
 	);
 }
+

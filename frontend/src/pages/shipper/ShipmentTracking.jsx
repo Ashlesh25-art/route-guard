@@ -1,156 +1,46 @@
-﻿import { useEffect, useState } from 'react';
-import { CircleMarker, MapContainer, Polyline, TileLayer } from 'react-leaflet';
-import { useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../config/api';
 import { ENDPOINTS } from '../../config/endpoints';
+import CargoTrackMap from '../../components/map/CargoTrackMap';
 import Spinner from '../../components/ui/Spinner';
-import Badge from '../../components/ui/Badge';
-import StatusTimeline from '../../components/shipments/StatusTimeline';
 
 export default function ShipmentTracking() {
+	const navigate = useNavigate();
 	const { id } = useParams();
 	const [shipment, setShipment] = useState(null);
 	const [loading, setLoading] = useState(true);
-	const [alerts, setAlerts] = useState([]);
 	const [error, setError] = useState('');
 
 	useEffect(() => {
-		const fetchShipment = async () => {
+		const fetch_ = async () => {
 			setLoading(true);
-			setError('');
 			try {
-				const response = await api.get(ENDPOINTS.SHIPMENT_DETAIL(id));
-				setShipment(response.data);
+				const res = await api.get(ENDPOINTS.SHIPMENT_DETAIL(id));
+				setShipment(res.data);
 			} catch {
-				setShipment(null);
-				setAlerts([]);
 				setError('Unable to load shipment tracking.');
 			} finally {
 				setLoading(false);
 			}
 		};
-
-		fetchShipment();
+		fetch_();
 	}, [id]);
 
-	useEffect(() => {
-		const fetchAlerts = async () => {
-			if (!shipment?.shipment_id) return;
-			try {
-				const response = await api.get(ENDPOINTS.ACTIVE_ALERTS);
-				const items = Array.isArray(response.data) ? response.data : response.data?.alerts || [];
-				setAlerts(items.filter((item) => item.shipment_id === shipment.shipment_id).slice(0, 3));
-			} catch {
-				setAlerts([]);
-			}
-		};
+	if (loading) return <div style={{ display: 'grid', placeItems: 'center', height: '100vh' }}><Spinner size="lg" /></div>;
 
-		fetchAlerts();
-	}, [shipment?.shipment_id]);
-
-	if (loading) {
+	if (error || !shipment) {
 		return (
-			<div className="card" style={{ minHeight: 220, display: 'grid', placeItems: 'center' }}>
-				<Spinner size="lg" />
+			<div style={{ padding: 32 }}>
+				<div style={{ color: '#ef4444', marginBottom: 12 }}>{error || 'Shipment not found'}</div>
+				<button onClick={() => navigate('/shipper')} style={{ background: 'transparent', border: '1px solid #1e2d45', color: '#00d4b4', padding: '8px 16px', borderRadius: 8, cursor: 'pointer' }}>← Back</button>
 			</div>
 		);
 	}
-
-	if (!shipment) {
-		return (
-			<div className="card">
-				<h2 className="section-title">Shipment unavailable</h2>
-				<p className="page-subtitle" style={{ marginBottom: 12 }}>{error || 'Unable to load shipment data.'}</p>
-			</div>
-		);
-	}
-
-	const riskIsElevated = ['medium', 'high', 'critical'].includes(shipment.current_risk_level);
-	const riskBorder = shipment.current_risk_level === 'critical' ? 'var(--risk-critical)' : 'var(--risk-high)';
 
 	return (
-		<div>
-			{error ? (
-				<div className="card" style={{ marginBottom: 14 }}>
-					<strong>{error}</strong>
-					<div className="page-subtitle">Check the backend connection and try again.</div>
-				</div>
-			) : null}
-			<div className="page-header">
-				<div>
-					<h1 className="page-title mono">{shipment.tracking_number}</h1>
-					<p className="page-subtitle">Shipment tracking overview</p>
-				</div>
-				<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-					<span className={`status-chip ${shipment.status}`}>{shipment.status.replace(/_/g, ' ')}</span>
-					<Badge level={shipment.current_risk_level}>{shipment.current_risk_level}</Badge>
-				</div>
-			</div>
-
-			{riskIsElevated ? (
-				<div className="card" style={{ marginBottom: 14, borderColor: riskBorder, background: 'rgba(249,115,22,0.08)' }}>
-					<strong>Risk Notice:</strong> Your shipment is in {shipment.current_risk_level} risk conditions. Logistics manager has been notified.
-					{shipment.is_rerouted ? (
-						<span style={{ display: 'block', marginTop: 6 }}>Route has been updated. New estimated arrival: {shipment.expected_arrival}</span>
-					) : null}
-				</div>
-			) : null}
-
-			<div className="map-panel" style={{ marginBottom: 14 }}>
-				<MapContainer
-					center={[shipment.current_coordinates.lat, shipment.current_coordinates.lng]}
-					zoom={4}
-					style={{ height: 400, width: '100%' }}
-				>
-					<TileLayer
-						url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-						attribution="&copy; OpenStreetMap contributors &copy; CARTO"
-					/>
-					<Polyline positions={shipment.route_waypoints.map((point) => [point.lat, point.lng])} pathOptions={{ color: '#3b82f6', weight: 4 }} />
-					<CircleMarker center={[shipment.current_coordinates.lat, shipment.current_coordinates.lng]} radius={8} pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6' }} />
-					{shipment.route_waypoints[0] ? (
-						<CircleMarker
-							center={[shipment.route_waypoints[0].lat, shipment.route_waypoints[0].lng]}
-							radius={7}
-							pathOptions={{ color: '#22c55e', fillColor: '#22c55e' }}
-						/>
-					) : null}
-					{shipment.route_waypoints[shipment.route_waypoints.length - 1] ? (
-						<CircleMarker
-							center={[
-								shipment.route_waypoints[shipment.route_waypoints.length - 1].lat,
-								shipment.route_waypoints[shipment.route_waypoints.length - 1].lng,
-							]}
-							radius={7}
-							pathOptions={{ color: shipment.status === 'delivered' ? '#22c55e' : '#94a3b8', fillColor: shipment.status === 'delivered' ? '#22c55e' : '#94a3b8' }}
-						/>
-					) : null}
-				</MapContainer>
-			</div>
-
-			<div className="grid-two" style={{ alignItems: 'start' }}>
-				<StatusTimeline currentStatus={shipment.status} />
-				<div className="card">
-					<h3 className="section-title">Shipment Info</h3>
-					<div className="info-list" style={{ marginBottom: 12 }}>
-						<div className="info-row"><span>Expected Arrival</span><strong>{shipment.expected_arrival}</strong></div>
-						<div className="info-row"><span>Cargo Type</span><strong>{shipment.cargo_type}</strong></div>
-						<div className="info-row"><span>Declared Value</span><strong>${shipment.declared_value.toLocaleString()}</strong></div>
-						<div className="info-row"><span>Assigned Vessel</span><strong>{shipment.assigned_vessel}</strong></div>
-						<div className="info-row"><span>Manager</span><strong>{shipment.assigned_manager}</strong></div>
-					</div>
-
-					<h4 style={{ marginBottom: 8 }}>Recent Notifications</h4>
-					<div className="info-list">
-						{alerts.map((note) => (
-							<div className="card" key={note.alert_id} style={{ padding: 10 }}>
-								<div className="mono" style={{ fontSize: 11 }}>{note.alert_type}</div>
-								<div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{note.message.slice(0, 110)}...</div>
-							</div>
-						))}
-					</div>
-				</div>
-			</div>
+		<div style={{ height: '100vh', margin: '-24px -32px' }}>
+			<CargoTrackMap initialShipments={[shipment]} initialSelected={shipment} />
 		</div>
 	);
 }

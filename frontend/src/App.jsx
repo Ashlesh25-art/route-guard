@@ -11,10 +11,10 @@ import PortStatusBoard from './pages/manager/PortStatusBoard';
 import ShipmentDetail from './pages/manager/ShipmentDetail';
 import ConfirmDelivery from './pages/receiver/ConfirmDelivery';
 import ReceiverDashboard from './pages/receiver/ReceiverDashboard';
-import TrackShipment from './pages/receiver/TrackShipment';
+import ReceiverOrderDetail from './pages/receiver/ReceiverOrderDetail';
 import CreateShipment from './pages/shipper/CreateShipment';
-import ShipperDashboard from './pages/shipper/ShipperDashboard';
-import ShipmentTracking from './pages/shipper/ShipmentTracking';
+import ShipperOrders from './pages/shipper/ShipperOrders';
+import OrderDetail from './pages/shipper/OrderDetail';
 
 const ROLE_HOME = {
 	manager: '/manager',
@@ -118,7 +118,15 @@ export default function App() {
 					path="shipper"
 					element={
 						<RoleGuard allowedRoles={['shipper']}>
-							<ShipperDashboard />
+							<ShipperOrders />
+						</RoleGuard>
+					}
+				/>
+				<Route
+					path="shipper/orders"
+					element={
+						<RoleGuard allowedRoles={['shipper']}>
+							<ShipperOrders />
 						</RoleGuard>
 					}
 				/>
@@ -134,7 +142,7 @@ export default function App() {
 					path="shipper/shipments/:id"
 					element={
 						<RoleGuard allowedRoles={['shipper']}>
-							<ShipmentTracking />
+						<OrderDetail />
 						</RoleGuard>
 					}
 				/>
@@ -240,7 +248,7 @@ export default function App() {
 					path="receiver/shipments/:id"
 					element={
 						<RoleGuard allowedRoles={['receiver']}>
-							<TrackShipment />
+							<ReceiverOrderDetail />
 						</RoleGuard>
 					}
 				/>

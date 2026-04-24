@@ -1,7 +1,11 @@
-﻿export const ENDPOINTS = {
+export const ENDPOINTS = {
 	LOGIN: '/auth/login',
 	REGISTER: '/auth/register',
 	ME: '/auth/me',
+	RECEIVERS: '/auth/receivers',
+	MANAGERS: '/auth/managers',
+	PORTS: '/auth/ports',
+	VESSELS: '/auth/vessels',
 
 	CREATE_SHIPMENT: '/shipments/create',
 	MY_SHIPMENTS: '/shipments/my',
@@ -16,6 +20,8 @@
 	ACTIVE_ALERTS: '/alerts/active',
 	RESOLVE_ALERT: (id) => `/alerts/${id}/resolve`,
 
+	MANAGER_SUMMARY: '/manager/summary',
+	MANAGER_DRIVERS: '/manager/drivers',
 	ALL_SHIPMENTS: '/manager/shipments',
 	PORT_STATUS: '/manager/ports',
 	ASSIGN_RESOURCES: (id) => `/manager/shipments/${id}/assign`,
@@ -26,5 +32,5 @@
 	CONFIRM_DELIVERY: (id) => `/shipments/${id}/deliver`,
 
 	MY_ASSIGNMENT: '/driver/assignment',
-	REPORT_INCIDENT: (id) => `/shipments/${id}/incident`,
+	REPORT_INCIDENT: (id) => `/driver/shipments/${id}/incident`,
 };

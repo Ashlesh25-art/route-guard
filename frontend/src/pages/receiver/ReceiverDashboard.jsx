@@ -133,69 +133,99 @@ const WorkflowTimeline = ({ activeStep }) => (
 );
 
 // Main Receiver Dashboard Screen
-const ReceiverMainDashboard = ({ setTab }) => (
-	<div style={{ animation: 'fadeUp 0.5s ease' }}>
-		<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
-			<div>
-				<h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Dashboard</h2>
-				<p style={{ margin: '4px 0 0', fontSize: 12, color: T.gray }}>Overview of your shipments</p>
-			</div>
-			<button onClick={() => setTab('create-order')} className="btn-primary">+ New Order</button>
-		</div>
+const ReceiverMainDashboard = ({ setTab }) => {
+	const [shipments, setShipments] = useState([]);
+	const [loadingShipments, setLoadingShipments] = useState(true);
 
-		{/* Live sync indicator */}
-		<div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, fontSize: 12 }}>
-			<span className="live-dot" />
-			<span style={{ color: T.gray }}>Live sync active</span>
-		</div>
+	useEffect(() => {
+		const load = async () => {
+			setLoadingShipments(true);
+			try {
+				const { default: api } = await import('../../config/api').then(m => ({ default: m.api }));
+				const { ENDPOINTS } = await import('../../config/endpoints');
+				const res = await api.get(ENDPOINTS.MY_SHIPMENTS);
+				setShipments(Array.isArray(res.data) ? res.data : []);
+			} catch { setShipments([]); }
+			finally { setLoadingShipments(false); }
+		};
+		load();
+	}, []);
 
-		{/* KPI Cards */}
-		<div className="grid-3">
-			<KpiCard label="Active Orders" value="3" sub="This week" variant="teal" icon="box" delay={0} />
-			<KpiCard label="On-Time Rate" value="94%" sub="Last 30 days" variant="amber" icon="activity" delay={50} />
-			<KpiCard label="Avg Delivery Time" value="18h" sub="Median" variant="green" icon="clock" delay={100} />
-		</div>
+	const activeShipments = shipments.filter(s => !['delivered', 'cancelled'].includes(s.current_status));
+	const deliveredShipments = shipments.filter(s => s.current_status === 'delivered');
+	const delayedCount = shipments.filter(s => s.current_status === 'delayed').length;
 
-		{/* Workflow Status */}
-		<div className="card" style={{ marginTop: 24 }}>
-			<div className="section-label">Current Workflow Status</div>
-			<WorkflowTimeline activeStep={2} />
-		</div>
+	const chipVariant = (status) => {
+		if (status === 'delivered') return 'green';
+		if (status === 'delayed') return 'red';
+		if (['in_transit', 'picked_up'].includes(status)) return 'teal';
+		return 'amber';
+	};
 
-		{/* Two-column grid */}
-		<div className="grid-2" style={{ marginTop: 24 }}>
-			{/* Active Orders */}
-			<div className="card">
-				<div className="section-label">Active Orders</div>
-				<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-					{[
-						{ id: 'ORD-2841', status: 'In Transit', eta: 'Today 18:30', variant: 'teal' },
-						{ id: 'ORD-2836', status: 'Packing', eta: 'Tomorrow 09:00', variant: 'amber' },
-						{ id: 'ORD-2829', status: 'Completed', eta: 'Delivered', variant: 'green' }
-					].map((order, i) => (
-						<div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, background: 'rgba(0, 0, 0, 0.2)', borderRadius: 8 }}>
-							<div>
-								<div style={{ fontSize: 13, fontWeight: 600 }}>{order.id}</div>
-								<Chip label={order.status} variant={order.variant} dot />
-							</div>
-							<div style={{ fontSize: 11, color: T.gray, textAlign: 'right' }}>{order.eta}</div>
-						</div>
-					))}
+	const fmtStatus = (s) => s ? s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '—';
+	const fmtEta = (iso) => {
+		if (!iso) return '—';
+		try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return iso; }
+	};
+
+	return (
+		<div style={{ animation: 'fadeUp 0.5s ease' }}>
+			<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
+				<div>
+					<h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Receiver Dashboard</h2>
+					<p style={{ margin: '4px 0 0', fontSize: 12, color: T.gray }}>Track your incoming shipments</p>
 				</div>
 			</div>
 
-			{/* Latest Alerts */}
-			<div className="card">
-				<div className="section-label">Latest Alerts</div>
-				<AlertBanner type="high" title="Delayed Delivery" msg="Order ORD-2836 experiencing traffic" time="2 min ago" />
-				<AlertBanner type="medium" title="Weather Warning" msg="Rain expected in delivery zone" time="15 min ago" />
-				<div style={{ padding: 12, background: 'rgba(0, 212, 180, 0.1)', borderRadius: 8, fontSize: 12, color: T.teal, border: `1px solid rgba(0, 212, 180, 0.3)` }}>
-					🤖 <strong>AI Insight:</strong> Recommend rescheduling delivery for afternoon
-				</div>
+			<div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, fontSize: 12 }}>
+				<span className="live-dot" />
+				<span style={{ color: T.gray }}>Live sync active</span>
+			</div>
+
+			<div className="grid-3">
+				<KpiCard label="Incoming" value={activeShipments.length} sub="Active shipments" variant="teal" icon="box" delay={0} />
+				<KpiCard label="Delivered" value={deliveredShipments.length} sub="Completed" variant="green" icon="check" delay={50} />
+				<KpiCard label="Delayed" value={delayedCount} sub="Needs attention" variant={delayedCount > 0 ? 'red' : 'green'} icon="alert" delay={100} />
+			</div>
+
+			{/* Active Shipments List */}
+			<div className="card" style={{ marginTop: 24 }}>
+				<div className="section-label">Incoming Shipments</div>
+				{loadingShipments ? (
+					<div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}><Spinner size={24} /></div>
+				) : shipments.length === 0 ? (
+					<div style={{ textAlign: 'center', padding: 32, color: T.gray }}>No shipments found</div>
+				) : (
+					<div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+						{shipments.map((shipment) => (
+							<a
+								key={shipment.shipment_id}
+								href={`/receiver/shipments/${shipment.shipment_id}`}
+								style={{
+									display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+									padding: 14, background: 'rgba(0, 0, 0, 0.2)', borderRadius: 10,
+									textDecoration: 'none', color: 'inherit', transition: 'all 0.2s',
+									border: '1px solid transparent', cursor: 'pointer',
+								}}
+								onMouseEnter={e => { e.currentTarget.style.borderColor = T.teal; e.currentTarget.style.background = 'rgba(0,212,180,0.04)'; }}
+								onMouseLeave={e => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'rgba(0,0,0,0.2)'; }}
+							>
+								<div>
+									<div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }} className="mono">{shipment.tracking_number}</div>
+									<Chip label={fmtStatus(shipment.current_status)} variant={chipVariant(shipment.current_status)} dot />
+								</div>
+								<div style={{ textAlign: 'right' }}>
+									<div style={{ fontSize: 12, color: T.gray, marginBottom: 2 }}>ETA</div>
+									<div style={{ fontSize: 13, fontWeight: 600 }}>{shipment.current_status === 'delivered' ? '✓ Delivered' : fmtEta(shipment.expected_arrival)}</div>
+								</div>
+							</a>
+						))}
+					</div>
+				)}
 			</div>
 		</div>
-	</div>
-);
+	);
+};
 
 // Create Order Screen (3-step form wizard)
 const CreateOrderScreen = ({ setTab }) => {

@@ -1,58 +1,85 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-	Bar,
-	BarChart,
-	CartesianGrid,
-	Cell,
-	Pie,
-	PieChart,
-	ResponsiveContainer,
-	Tooltip,
-	XAxis,
-	YAxis,
+	Bar, BarChart, CartesianGrid, Cell, Line, LineChart,
+	Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend, Area, AreaChart,
 } from 'recharts';
 import { api } from '../../config/api';
 import { ENDPOINTS } from '../../config/endpoints';
 import Spinner from '../../components/ui/Spinner';
 
-const REROUTE_HISTORY = [
-	{ route: 'Southern Pacific', original: 91, next: 28, outcome: 'Approved', delay: '17.7h saved' },
-	{ route: 'Bab-el-Mandeb diversion', original: 68, next: 41, outcome: 'Approved', delay: '6.0h saved' },
-	{ route: 'Guam waypoint hold', original: 79, next: 18, outcome: 'Rejected', delay: '0h saved' },
-	{ route: 'Cape route bypass', original: 64, next: 39, outcome: 'Approved', delay: '4.2h saved' },
-	{ route: 'Speed-up direct', original: 72, next: 65, outcome: 'Rejected', delay: '0h saved' },
-];
+const T = {
+	navy: '#080E1A', card: '#0D1526', border: '#1A2A45',
+	teal: '#00D4B4', amber: '#F59E0B', red: '#EF4444',
+	green: '#10B981', white: '#F0F4FF', gray: '#8A9BB5', grayDim: '#4A5F7A',
+};
+
+const css = `
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  .an-card{background:${T.card};border:1px solid ${T.border};border-radius:12px;padding:20px;margin-bottom:14px;}
+  .an-metric{text-align:center;padding:16px 10px;}
+  .an-metric .val{font-size:28px;font-weight:700;font-family:'JetBrains Mono',monospace;}
+  .an-metric .lbl{font-size:11px;color:${T.gray};margin-top:4px;}
+  .an-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid ${T.border};font-size:13px;}
+  .an-row:last-child{border-bottom:none;}
+  .an-row .k{color:${T.gray};} .an-row .v{font-weight:600;color:${T.white};font-family:'JetBrains Mono',monospace;}
+  .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+  .section-hdr{font-size:13px;font-weight:700;color:${T.white};margin-bottom:14px;}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+  .fade{animation:fadeUp .4s ease both;}
+  .recharts-text{fill:${T.gray}!important;font-size:11px!important;}
+  .recharts-cartesian-grid-horizontal line,.recharts-cartesian-grid-vertical line{stroke:${T.border}!important;}
+  .custom-tooltip{background:${T.navy};border:1px solid ${T.border};border-radius:8px;padding:10px 14px;font-size:12px;color:${T.white};}
+`;
+
+function StatCard({ label, value, color, sub }) {
+	return (
+		<div className="an-card an-metric fade">
+			<div className="val" style={{ color: color || T.teal }}>{value}</div>
+			<div className="lbl">{label}</div>
+			{sub && <div style={{ fontSize: 10, color: T.grayDim, marginTop: 2 }}>{sub}</div>}
+		</div>
+	);
+}
+
+function CustomTooltip({ active, payload, label }) {
+	if (!active || !payload?.length) return null;
+	return (
+		<div className="custom-tooltip">
+			<div style={{ fontWeight: 700, marginBottom: 4 }}>{label}</div>
+			{payload.map((p) => (
+				<div key={p.name} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+					<span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, display: 'inline-block' }} />
+					<span>{p.name}: <strong>{p.value}</strong></span>
+				</div>
+			))}
+		</div>
+	);
+}
 
 export default function AnalyticsPage() {
 	const [overview, setOverview] = useState(null);
 	const [accuracy, setAccuracy] = useState(null);
-	const [riskHistory, setRiskHistory] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState('');
 
 	useEffect(() => {
-		const fetchData = async () => {
+		(async () => {
 			setLoading(true);
-			setError('');
 			try {
-				const [overviewRes, accuracyRes] = await Promise.all([
+				const [ov, ac] = await Promise.all([
 					api.get(ENDPOINTS.OVERVIEW),
 					api.get(ENDPOINTS.MODEL_ACCURACY),
 				]);
-				setOverview(overviewRes.data);
-				setAccuracy(accuracyRes.data);
-				setRiskHistory(overviewRes.data.risk_history_7_days || []);
+				setOverview(ov.data);
+				setAccuracy(ac.data);
 			} catch {
-				setOverview(null);
-				setAccuracy(null);
-				setRiskHistory([]);
-				setError('Unable to load analytics right now.');
+				setError('Unable to load analytics. Check backend connection.');
 			} finally {
 				setLoading(false);
 			}
-		};
-
-		fetchData();
+		})();
 	}, []);
 
 	const pieData = useMemo(() => {
@@ -62,125 +89,118 @@ export default function AnalyticsPage() {
 			{ name: 'High', value: overview.high_risk_count, color: '#f97316' },
 			{ name: 'Medium', value: overview.medium_risk_count, color: '#eab308' },
 			{ name: 'Low', value: overview.low_risk_count, color: '#22c55e' },
-		];
+		].filter(d => d.value > 0);
 	}, [overview]);
 
-	if (loading) {
-		return (
-			<div className="card" style={{ minHeight: 240, display: 'grid', placeItems: 'center' }}>
-				<Spinner size="lg" />
-			</div>
-		);
-	}
+	const riskHistory = overview?.risk_history_7_days || [];
+
+	if (loading) return <div className="an-card" style={{ minHeight: 300, display: 'grid', placeItems: 'center' }}><Spinner size="lg" /></div>;
 
 	return (
-		<div>
-			{error ? (
-				<div className="card" style={{ marginBottom: 14 }}>
-					<strong>{error}</strong>
-					<div className="page-subtitle">Verify the backend is running and reachable.</div>
-				</div>
-			) : null}
-			<div className="page-header">
-				<div>
-					<h1 className="page-title">Model Analytics</h1>
-					<p className="page-subtitle">Operational intelligence and model performance overview</p>
-				</div>
-			</div>
+		<>
+			<style>{css}</style>
+			<div style={{ color: T.white, fontFamily: "'Space Grotesk', sans-serif" }}>
+				{error && <div className="an-card" style={{ borderLeft: `3px solid ${T.red}` }}><strong style={{ color: T.red }}>{error}</strong></div>}
 
-			<div className="grid-three" style={{ marginBottom: 14 }}>
-				<div className="card">
-					<h3 className="section-title">XGBoost Accuracy</h3>
-					<div className="mono" style={{ fontSize: 34, fontWeight: 700 }}>
-						{((accuracy?.xgboost_r2 || 0) * 100).toFixed(1)}%
-					</div>
-					<p className="page-subtitle">R² quality score</p>
-				</div>
-				<div className="card">
-					<h3 className="section-title">Delay Prediction MAE</h3>
-					<div className="mono" style={{ fontSize: 34, fontWeight: 700 }}>
-						{accuracy?.random_forest_delay_mae || 0}h
-					</div>
-					<p className="page-subtitle">Average absolute error</p>
-				</div>
-				<div className="card">
-					<h3 className="section-title">Reroute Decision Accuracy</h3>
-					<div className="mono" style={{ fontSize: 34, fontWeight: 700 }}>
-						{accuracy?.gradient_boost_accuracy || 0}%
-					</div>
-					<p className="page-subtitle">Correct reroute decisions</p>
-				</div>
-			</div>
-
-			<div className="card" style={{ marginBottom: 14, height: 320 }}>
-				<h3 className="section-title">Daily Shipment Risk Distribution</h3>
-				<ResponsiveContainer width="100%" height="90%">
-					<BarChart data={riskHistory}>
-						<CartesianGrid stroke="rgba(148,163,184,0.2)" strokeDasharray="4 4" />
-						<XAxis dataKey="date" tick={{ fill: '#94a3b8' }} />
-						<YAxis tick={{ fill: '#94a3b8' }} />
-						<Tooltip />
-						<Bar dataKey="critical" stackId="risk" fill="#ef4444" />
-						<Bar dataKey="high" stackId="risk" fill="#f97316" />
-						<Bar dataKey="medium" stackId="risk" fill="#eab308" />
-						<Bar dataKey="low" stackId="risk" fill="#22c55e" />
-					</BarChart>
-				</ResponsiveContainer>
-			</div>
-
-			<div className="grid-two" style={{ alignItems: 'start' }}>
-				<div className="card">
-					<h3 className="section-title">Rerouting Success</h3>
-					<table className="data-table">
-						<thead>
-							<tr>
-								<th>Route Decision</th>
-								<th>Original Risk</th>
-								<th>New Risk</th>
-								<th>Outcome</th>
-								<th>Delay Saved</th>
-							</tr>
-						</thead>
-						<tbody>
-							{REROUTE_HISTORY.map((row) => (
-								<tr key={row.route}>
-									<td>{row.route}</td>
-									<td className="mono">{row.original}</td>
-									<td className="mono">{row.next}</td>
-									<td>{row.outcome}</td>
-									<td className="mono">{row.delay}</td>
-								</tr>
-							))}
-						</tbody>
-					</table>
+				{/* Page Header */}
+				<div style={{ marginBottom: 28, paddingBottom: 20, borderBottom: `1px solid ${T.border}` }}>
+					<h1 style={{ fontSize: 22, fontWeight: 700 }}>📊 Analytics & Intelligence</h1>
+					<div style={{ fontSize: 12, color: T.gray, marginTop: 4 }}>Operational metrics, ML model performance, and financial insights</div>
 				</div>
 
-				<div style={{ display: 'grid', gap: 12 }}>
-					<div className="card" style={{ height: 240 }}>
-						<h3 className="section-title">Current Risk Mix</h3>
-						<ResponsiveContainer width="100%" height="85%">
-							<PieChart>
-								<Pie data={pieData} dataKey="value" nameKey="name" innerRadius={44} outerRadius={70}>
-									{pieData.map((slice) => (
-										<Cell key={slice.name} fill={slice.color} />
-									))}
-								</Pie>
-								<Tooltip />
-							</PieChart>
+				{/* KPI Row */}
+				<div className="grid-4">
+					<StatCard label="Active Shipments" value={overview?.total_active_shipments ?? 0} color={T.teal} />
+					<StatCard label="On-Time Rate" value={`${overview?.on_time_percentage ?? 0}%`} color={Number(overview?.on_time_percentage ?? 0) >= 80 ? T.green : T.amber} sub="Last 30 days" />
+					<StatCard label="Currently Delayed" value={overview?.delayed_count ?? 0} color={T.red} />
+					<StatCard label="Losses Prevented" value={`$${Number(overview?.financial_losses_prevented_usd ?? 0).toLocaleString()}`} color={T.green} sub="Via rerouting" />
+				</div>
+
+				{/* Risk Distribution Row */}
+				<div className="grid-4" style={{ marginTop: 0 }}>
+					<StatCard label="Critical Risk" value={overview?.critical_count ?? 0} color="#ef4444" />
+					<StatCard label="High Risk" value={overview?.high_risk_count ?? 0} color="#f97316" />
+					<StatCard label="Medium Risk" value={overview?.medium_risk_count ?? 0} color="#eab308" />
+					<StatCard label="Low Risk" value={overview?.low_risk_count ?? 0} color="#22c55e" />
+				</div>
+
+				{/* Charts Row */}
+				<div className="grid-2">
+					{/* Bar Chart — 7 day risk history */}
+					<div className="an-card fade" style={{ height: 340 }}>
+						<div className="section-hdr">Daily Risk Distribution (7 Days)</div>
+						<ResponsiveContainer width="100%" height="88%">
+							<BarChart data={riskHistory}>
+								<CartesianGrid strokeDasharray="4 4" stroke={T.border} />
+								<XAxis dataKey="date" tick={{ fill: T.gray, fontSize: 10 }} />
+								<YAxis tick={{ fill: T.gray, fontSize: 10 }} />
+								<Tooltip content={<CustomTooltip />} />
+								<Legend wrapperStyle={{ fontSize: 11 }} />
+								<Bar dataKey="critical" stackId="risk" fill="#ef4444" radius={[0,0,0,0]} />
+								<Bar dataKey="high" stackId="risk" fill="#f97316" />
+								<Bar dataKey="medium" stackId="risk" fill="#eab308" />
+								<Bar dataKey="low" stackId="risk" fill="#22c55e" radius={[4,4,0,0]} />
+							</BarChart>
 						</ResponsiveContainer>
 					</div>
 
-					<div className="card">
-						<h3 className="section-title">Performance Stats</h3>
-						<div className="info-list">
-							<div className="info-row"><span>Predictions made</span><strong className="mono">{accuracy?.total_predictions_made || 0}</strong></div>
-							<div className="info-row"><span>Avg detection time before impact</span><strong className="mono">4.2 hours</strong></div>
-							<div className="info-row"><span>Total disruptions prevented</span><strong className="mono">44</strong></div>
-							<div className="info-row"><span>Financial losses prevented</span><strong className="mono">${(overview?.financial_losses_prevented_usd || 0).toLocaleString()}</strong></div>
+					{/* Pie Chart — Current Risk Mix */}
+					<div className="an-card fade" style={{ height: 340 }}>
+						<div className="section-hdr">Current Risk Mix</div>
+						<ResponsiveContainer width="100%" height="88%">
+							<PieChart>
+								<Pie data={pieData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={3} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+									{pieData.map((s) => <Cell key={s.name} fill={s.color} />)}
+								</Pie>
+								<Tooltip content={<CustomTooltip />} />
+							</PieChart>
+						</ResponsiveContainer>
+					</div>
+				</div>
+
+				{/* ML Model Performance */}
+				<div className="an-card fade" style={{ borderLeft: `3px solid ${T.teal}` }}>
+					<div className="section-hdr">🤖 ML Model Performance</div>
+					<div className="grid-3">
+						<div>
+							<div style={{ fontSize: 11, color: T.gray }}>XGBoost Risk R²</div>
+							<div style={{ fontSize: 28, fontWeight: 700, color: T.teal, fontFamily: "'JetBrains Mono', monospace" }}>{((accuracy?.xgboost_r2 || 0) * 100).toFixed(1)}%</div>
+							<div style={{ fontSize: 10, color: T.grayDim }}>RMSE: {accuracy?.xgboost_rmse || '—'}</div>
+						</div>
+						<div>
+							<div style={{ fontSize: 11, color: T.gray }}>Delay Prediction MAE</div>
+							<div style={{ fontSize: 28, fontWeight: 700, color: T.amber, fontFamily: "'JetBrains Mono', monospace" }}>{accuracy?.random_forest_delay_mae || 0}h</div>
+							<div style={{ fontSize: 10, color: T.grayDim }}>Random Forest model</div>
+						</div>
+						<div>
+							<div style={{ fontSize: 11, color: T.gray }}>Reroute Decision</div>
+							<div style={{ fontSize: 28, fontWeight: 700, color: T.green, fontFamily: "'JetBrains Mono', monospace" }}>{accuracy?.gradient_boost_accuracy || 0}%</div>
+							<div style={{ fontSize: 10, color: T.grayDim }}>Gradient Boosting accuracy</div>
 						</div>
 					</div>
 				</div>
+
+				{/* Bottom Grid */}
+				<div className="grid-2">
+					{/* Financial Overview */}
+					<div className="an-card fade">
+						<div className="section-hdr">💰 Financial Overview</div>
+						<div className="an-row"><span className="k">Total Cargo Value Monitored</span><span className="v">${Number(overview?.total_value_monitored_usd ?? 0).toLocaleString()}</span></div>
+						<div className="an-row"><span className="k">Reroutes This Week</span><span className="v">{overview?.rerouted_this_week ?? 0}</span></div>
+						<div className="an-row"><span className="k">Financial Losses Prevented</span><span className="v" style={{ color: T.green }}>${Number(overview?.financial_losses_prevented_usd ?? 0).toLocaleString()}</span></div>
+						<div className="an-row"><span className="k">Avg Saving Per Reroute</span><span className="v">${overview?.rerouted_this_week ? Math.round(Number(overview.financial_losses_prevented_usd) / overview.rerouted_this_week).toLocaleString() : '—'}</span></div>
+					</div>
+
+					{/* Operations Stats */}
+					<div className="an-card fade">
+						<div className="section-hdr">⚙️ Operations Stats</div>
+						<div className="an-row"><span className="k">Total Predictions Made</span><span className="v">{accuracy?.total_predictions_made ?? 0}</span></div>
+						<div className="an-row"><span className="k">Correct Reroute Decisions</span><span className="v" style={{ color: T.green }}>{accuracy?.correct_reroute_decisions ?? 0}</span></div>
+						<div className="an-row"><span className="k">Incorrect Decisions</span><span className="v" style={{ color: T.red }}>{accuracy?.incorrect_reroute_decisions ?? 0}</span></div>
+						<div className="an-row"><span className="k">Overall Model Accuracy</span><span className="v" style={{ color: T.teal }}>{accuracy?.overall_model_accuracy ?? 0}%</span></div>
+					</div>
+				</div>
 			</div>
-		</div>
+		</>
 	);
 }

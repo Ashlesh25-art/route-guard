@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
 	PackagePlus,
@@ -18,6 +18,7 @@ import {
 import { api } from '../../config/api';
 import { ENDPOINTS } from '../../config/endpoints';
 import Spinner from '../../components/ui/Spinner';
+import { normalizeShipment } from '../../utils/shipmentView';
 import EmptyState from '../../components/ui/EmptyState';
 import ShipmentTable from '../../components/shipments/ShipmentTable';
 import ShipmentCard from '../../components/shipments/ShipmentCard';
@@ -421,10 +422,10 @@ export default function ShipperDashboard() {
 	}, []);
 
 	const filteredShipments = useMemo(() => {
-		return shipments.filter((item) => {
+		return shipments.map(normalizeShipment).filter((item) => {
 			const matchesSearch =
-				item.tracking_number.toLowerCase().includes(search.toLowerCase()) ||
-				item.shipment_id.toLowerCase().includes(search.toLowerCase());
+				String(item.tracking_number || '').toLowerCase().includes(search.toLowerCase()) ||
+				String(item.shipment_id || '').toLowerCase().includes(search.toLowerCase());
 			const matchesStatus = statusFilter === 'all' ? true : item.status === statusFilter;
 			return matchesSearch && matchesStatus;
 		});
@@ -471,8 +472,8 @@ export default function ShipperDashboard() {
 			{/* Page Header */}
 			<div className="page-header">
 				<div>
-					<h1 className="page-title">Shipper Operations</h1>
-					<p className="page-subtitle">Manage incoming requests and dispatch pipeline</p>
+					<h1 className="page-title">Sender Dashboard</h1>
+					<p className="page-subtitle">Manage your shipments and dispatch pipeline</p>
 				</div>
 				<div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
 					<span style={{ fontSize: 12, color: 'var(--text-muted)', backgroundColor: 'var(--bg-elevated)', padding: '6px 12px', borderRadius: 6, fontWeight: 600 }}>
@@ -480,7 +481,7 @@ export default function ShipperDashboard() {
 					</span>
 					<button type="button" className="btn-primary" onClick={() => navigate('/shipper/create')}>
 						<PackagePlus size={16} />
-						New Shipment
+						Send Package
 					</button>
 				</div>
 			</div>

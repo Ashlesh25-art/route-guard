@@ -6,6 +6,7 @@ import { ENDPOINTS } from '../../config/endpoints';
 import Badge from '../../components/ui/Badge';
 import Spinner from '../../components/ui/Spinner';
 import StatusTimeline from '../../components/shipments/StatusTimeline';
+import { normalizeShipment } from '../../utils/shipmentView';
 
 const STATUS_OPTIONS = [
 	{ value: 'picked_up', label: 'Picked Up' },
@@ -49,9 +50,10 @@ export default function StatusUpdate() {
 			try {
 				if (shipmentId) {
 					const detail = await api.get(ENDPOINTS.SHIPMENT_DETAIL(shipmentId));
-					setShipment(detail.data);
-					setForm((prev) => ({ ...prev, status: detail.data?.status || prev.status }));
-					setTimelineUpdates(initialTimeline(detail.data));
+					const normalized = normalizeShipment(detail.data);
+					setShipment(normalized);
+					setForm((prev) => ({ ...prev, status: normalized?.status || prev.status }));
+					setTimelineUpdates(initialTimeline(normalized));
 					return;
 				}
 
@@ -59,9 +61,10 @@ export default function StatusUpdate() {
 				const payload = assignmentRes.data;
 				const assignment = Array.isArray(payload) ? payload[0] : payload?.shipment || payload?.assignment || payload;
 				if (!assignment?.shipment_id) throw new Error('No assignment found');
-				setShipment(assignment);
-				setForm((prev) => ({ ...prev, status: assignment.status || prev.status }));
-				setTimelineUpdates(initialTimeline(assignment));
+				const normalized = normalizeShipment(assignment);
+				setShipment(normalized);
+				setForm((prev) => ({ ...prev, status: normalized.status || prev.status }));
+				setTimelineUpdates(initialTimeline(normalized));
 			} catch {
 				setShipment(null);
 				setTimelineUpdates([]);
@@ -86,16 +89,21 @@ export default function StatusUpdate() {
 
 		setSaving(true);
 		const payload = {
-			status: form.status,
-			location_lat: form.latitude ? Number(form.latitude) : undefined,
-			location_lng: form.longitude ? Number(form.longitude) : undefined,
-			note: form.notes || undefined,
+			new_status: form.status,
+			latitude: form.latitude ? Number(form.latitude) : undefined,
+			longitude: form.longitude ? Number(form.longitude) : undefined,
+			notes: form.notes || undefined,
 		};
 
 		try {
 			await api.put(ENDPOINTS.UPDATE_STATUS(shipment.shipment_id), payload);
 			if (form.reportIncident && form.notes.trim()) {
-				await api.post(ENDPOINTS.REPORT_INCIDENT(shipment.shipment_id), { note: form.notes.trim() });
+				await api.post(ENDPOINTS.REPORT_INCIDENT(shipment.shipment_id), null, {
+					params: {
+						incident_type: 'driver_reported',
+						description: form.notes.trim(),
+					},
+				});
 			}
 		} catch {
 			setSaving(false);
