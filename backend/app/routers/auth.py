@@ -29,6 +29,21 @@ from app.services.auth_service import (
 router = APIRouter()
 
 
+def _serialize_ports(ports: list[Port]) -> list[dict]:
+	return [
+		{
+			'port_id': str(p.port_id),
+			'port_name': p.port_name,
+			'port_code': p.port_code,
+			'country': p.country,
+			'latitude': float(p.latitude),
+			'longitude': float(p.longitude),
+			'port_type': p.port_type.value if hasattr(p.port_type, 'value') else str(p.port_type),
+		}
+		for p in ports
+	]
+
+
 @router.post('/register', response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserRegister, db: Session = Depends(get_db)):
 	return register_user(db, user_data)
@@ -117,18 +132,14 @@ async def list_ports(current_user: User = Depends(get_current_user), db: Session
 	"""Return all ports so any role can populate origin/destination selectors."""
 	_ = current_user
 	ports = db.query(Port).order_by(Port.port_name.asc()).all()
-	return [
-		{
-			'port_id': str(p.port_id),
-			'port_name': p.port_name,
-			'port_code': p.port_code,
-			'country': p.country,
-			'latitude': float(p.latitude),
-			'longitude': float(p.longitude),
-			'port_type': p.port_type.value if hasattr(p.port_type, 'value') else str(p.port_type),
-		}
-		for p in ports
-	]
+	return _serialize_ports(ports)
+
+
+@router.get('/public-ports')
+async def list_public_ports(db: Session = Depends(get_db)):
+	"""Public ports lookup for signup forms before authentication."""
+	ports = db.query(Port).order_by(Port.port_name.asc()).all()
+	return _serialize_ports(ports)
 
 
 @router.get('/vessels')

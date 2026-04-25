@@ -1,6 +1,8 @@
 from datetime import datetime
 from uuid import UUID
 
+from decimal import Decimal
+
 from pydantic import BaseModel, ConfigDict, EmailStr
 
 from app.models.user import AccountType, UserRole
@@ -9,6 +11,30 @@ from app.models.user import AccountType, UserRole
 class UserLogin(BaseModel):
 	email: EmailStr
 	password: str
+
+
+class CompanyProfileRegister(BaseModel):
+	company_type: str | None = None
+	registration_number: str | None = None
+	tax_vat_number: str | None = None
+	hq_address: str | None = None
+	website: str | None = None
+	contact_name: str | None = None
+	contact_designation: str | None = None
+	typical_cargo: str | None = None
+	monthly_volume_band: str | None = None
+	preferred_ports: list[str] | None = None
+
+
+class LogisticsServiceLaneRegister(BaseModel):
+	origin_port_id: str
+	destination_port_id: str
+	service_mode: str = 'sea'
+	min_transit_days: int | None = None
+	max_transit_days: int | None = None
+	base_price_usd: Decimal | None = None
+	price_per_kg_usd: Decimal | None = None
+	active: bool = True
 
 
 class UserRegister(BaseModel):
@@ -20,6 +46,8 @@ class UserRegister(BaseModel):
 	company_name: str | None = None
 	phone_number: str | None = None
 	country: str | None = None
+	company_profile: CompanyProfileRegister | None = None
+	service_lanes: list[LogisticsServiceLaneRegister] = []
 	tos_accepted: bool = False
 	privacy_accepted: bool = False
 	shipping_terms_accepted: bool = False

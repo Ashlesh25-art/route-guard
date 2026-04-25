@@ -1,12 +1,15 @@
 from datetime import UTC, datetime, timedelta
 import hashlib
 import random
+from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.user import User
+from app.models.company_profile import CompanyProfile
+from app.models.logistics_service_lane import LogisticsServiceLane
+from app.models.user import User, UserRole
 from app.models.user_document import UserDocument
 from app.models.verification_otp import VerificationOTP
 from app.schemas.auth import TokenResponse, UserLogin, UserRegister, UserResponse
@@ -33,6 +36,73 @@ def register_user(db: Session, user_data: UserRegister) -> TokenResponse:
 	)
 
 	db.add(new_user)
+	db.flush()
+
+	should_create_company_profile = bool(
+		user_data.company_profile
+		or (user_data.company_name and user_data.role in {UserRole.MANAGER, UserRole.SHIPPER})
+	)
+	if should_create_company_profile:
+		preferred_ports = None
+		if user_data.company_profile and user_data.company_profile.preferred_ports:
+			preferred_ports = []
+			for port_id in user_data.company_profile.preferred_ports:
+				try:
+					preferred_ports.append(str(UUID(str(port_id))))
+				except (TypeError, ValueError):
+					continue
+			preferred_ports = preferred_ports or None
+
+		profile = CompanyProfile(
+			user_id=new_user.user_id,
+			company_type=user_data.company_profile.company_type if user_data.company_profile else None,
+			registration_number=user_data.company_profile.registration_number if user_data.company_profile else None,
+			tax_vat_number=user_data.company_profile.tax_vat_number if user_data.company_profile else None,
+			hq_address=user_data.company_profile.hq_address if user_data.company_profile else None,
+			website=user_data.company_profile.website if user_data.company_profile else None,
+			contact_name=user_data.company_profile.contact_name if user_data.company_profile else None,
+			contact_designation=user_data.company_profile.contact_designation if user_data.company_profile else None,
+			typical_cargo=user_data.company_profile.typical_cargo if user_data.company_profile else None,
+			monthly_volume_band=user_data.company_profile.monthly_volume_band if user_data.company_profile else None,
+			preferred_ports=preferred_ports,
+		)
+		db.add(profile)
+
+	if user_data.role == UserRole.MANAGER and user_data.service_lanes:
+		seen_keys: set[tuple[str, str, str]] = set()
+		for lane in user_data.service_lanes:
+			if lane.origin_port_id == lane.destination_port_id:
+				raise HTTPException(
+					status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+					detail='Origin and destination must be different for service lanes',
+				)
+			try:
+				origin_port_id = UUID(str(lane.origin_port_id))
+				destination_port_id = UUID(str(lane.destination_port_id))
+			except (TypeError, ValueError) as exc:
+				raise HTTPException(
+					status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+					detail='Invalid port ID in service lane',
+				) from exc
+			key = (str(origin_port_id), str(destination_port_id), lane.service_mode.strip().lower())
+			if key in seen_keys:
+				continue
+			seen_keys.add(key)
+
+			db.add(
+				LogisticsServiceLane(
+					provider_user_id=new_user.user_id,
+					origin_port_id=origin_port_id,
+					destination_port_id=destination_port_id,
+					service_mode=lane.service_mode.strip().lower() or 'sea',
+					min_transit_days=lane.min_transit_days,
+					max_transit_days=lane.max_transit_days,
+					base_price_usd=lane.base_price_usd,
+					price_per_kg_usd=lane.price_per_kg_usd,
+					active=lane.active,
+				)
+			)
+
 	db.commit()
 	db.refresh(new_user)
 
