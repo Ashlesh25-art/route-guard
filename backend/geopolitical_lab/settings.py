@@ -9,13 +9,8 @@ class LabSettings(BaseSettings):
     DEBUG: bool = True
     CORS_ORIGINS: str = "*"
 
-    # Provider keys
-    NEWSAPI_KEY: str = ""
-    OPENAI_API_KEY: str = ""
-
-    # LLM options: rules | openai
-    LLM_PROVIDER: str = "rules"
-    OPENAI_MODEL: str = "gpt-4o-mini"
+    # Parsing mode is deterministic and API-key free.
+    PARSER_MODE: str = "rules_structured"
 
     # Ingestion controls
     INGEST_LIMIT_PER_PROVIDER: int = Field(default=20, ge=1, le=100)

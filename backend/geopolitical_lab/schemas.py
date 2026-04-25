@@ -22,7 +22,6 @@ class RoutingAction(str, Enum):
 
 class EventSource(str, Enum):
     SEED = "seed"
-    NEWSAPI = "newsapi"
     GDELT = "gdelt"
     NOAA = "noaa"
     MANUAL = "manual"
@@ -66,6 +65,22 @@ class RouteWaypoint(BaseModel):
 class RouteEvaluateRequest(BaseModel):
     route_id: str = "candidate-route"
     waypoints: list[RouteWaypoint] = Field(min_length=2)
+
+
+class StructuredEventInput(BaseModel):
+    title: str
+    description: str = ""
+    source: EventSource = EventSource.MANUAL
+    url: HttpUrl | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    event_type_hint: str | None = None
+    severity_hint: float | None = Field(default=None, ge=1.0, le=10.0)
+    radius_km_hint: float | None = Field(default=None, ge=10.0, le=5000.0)
+
+
+class StructuredIngestRequest(BaseModel):
+    events: list[StructuredEventInput] = Field(min_length=1, max_length=200)
 
 
 class ZoneHit(BaseModel):
