@@ -1,31 +1,36 @@
+# ── Environment & Dependencies ──────────────────────────
 node_modules/
 .venv/
+venv/
 __pycache__/
 *.pyc
 .env
 frontend/.env
 backend/.env
 
-# Root planning documents
-/backend thing.md
-/backend thing.txt
-/ml implementaion.md
-/RouteGuard_Frontend_Spec.md
-/RouteGuard_Project_Plan.md
-/Smart Supply Chain Hone.md
-/docs/
-/download_dataset.py
-/inspect_csvs.py
-
-# Presentation artifacts
-/ppt/
-
-# Frontend generated artifacts
+# ── Frontend build artifacts ────────────────────────────
 frontend/.vite/
 frontend/dist/
 
-# Large ML artifacts (keep out of git history)
+# ── Large ML artifacts ──────────────────────────────────
 ml/data/**/*.csv
 ml/data/**/*.pdf
 ml/models/**/*.pkl
 ml/models/**/*.pt
+
+# ── Marnet geo data (large binary) ──────────────────────
+marnet/
+
+# ── Presentation artifacts ──────────────────────────────
+ppt/
+
+# ── Development docs (local only) ───────────────────────
+docs/
+
+# ── IDE & OS ────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
