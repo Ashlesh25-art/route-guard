@@ -25,7 +25,7 @@ export function normalizeShipment(shipment = {}) {
 		assigned_driver: shipment.assigned_driver ?? shipment.driver_name ?? '',
 		cargo_type: shipment.cargo_type ?? shipment.cargo?.cargo_type ?? '',
 		cargo_description: shipment.cargo_description ?? shipment.cargo?.description ?? '',
-		declared_value: Number(shipment.declared_value ?? shipment.cargo?.declared_value ?? 0),
+		declared_value: Number(shipment.invoice_amount_usd ?? shipment.declared_value ?? shipment.cargo?.declared_value ?? 0),
 		current_risk_level: shipment.current_risk_level ?? 'low',
 		current_risk_score: Number(shipment.current_risk_score ?? 0),
 	};

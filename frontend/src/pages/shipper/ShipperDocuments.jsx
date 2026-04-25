@@ -6,30 +6,56 @@ import Spinner from '../../components/ui/Spinner';
 import EmptyState from '../../components/ui/EmptyState';
 import { normalizeShipment } from '../../utils/shipmentView';
 
-function requiredDocs(shipment) {
-	return [
-		{ key: 'invoice', label: 'Commercial Invoice', status: 'uploaded' },
-		{ key: 'packing', label: 'Packing List', status: 'uploaded' },
-		{
-			key: 'origin',
-			label: 'Certificate of Origin',
-			status: shipment.status === 'delivered' ? 'uploaded' : 'missing',
-		},
-		{ key: 'insurance', label: 'Insurance Certificate', status: 'optional' },
-	];
+function normalizeConsignmentRows(payload) {
+	if (Array.isArray(payload)) return payload;
+	if (payload && typeof payload === 'object') {
+		return [
+			...(payload.pending || []),
+			...(payload.in_transit || []),
+			...(payload.completed || []),
+			...(payload.delayed || []),
+			...(payload.cancelled || []),
+		];
+	}
+	return [];
 }
+
+const DOC_DEFS = [
+	{ key: 'invoice', label: 'Commercial Invoice', optional: false },
+	{ key: 'packing', label: 'Packing List', optional: false },
+	{ key: 'origin', label: 'Certificate of Origin', optional: false },
+	{ key: 'insurance', label: 'Insurance Certificate', optional: true },
+];
 
 export default function ShipperDocuments() {
 	const [loading, setLoading] = useState(true);
 	const [shipments, setShipments] = useState([]);
+	const [docsByShipment, setDocsByShipment] = useState({});
+	const [actionLoading, setActionLoading] = useState({});
+
+	const loadShipmentDocuments = async (shipmentId) => {
+		try {
+			const res = await api.get(ENDPOINTS.SHIPPER_SHIPMENT_DOCS(shipmentId));
+			const rows = Array.isArray(res.data) ? res.data : [];
+			const byType = {};
+			for (const doc of rows) {
+				if (!byType[doc.doc_type]) byType[doc.doc_type] = doc;
+			}
+			setDocsByShipment((prev) => ({ ...prev, [shipmentId]: byType }));
+		} catch {
+			setDocsByShipment((prev) => ({ ...prev, [shipmentId]: {} }));
+		}
+	};
 
 	useEffect(() => {
 		const load = async () => {
 			setLoading(true);
 			try {
 				const res = await api.get(ENDPOINTS.CONSIGNMENTS).catch(() => api.get(ENDPOINTS.MY_SHIPMENTS));
-				const rows = Array.isArray(res.data) ? res.data : [];
-				setShipments(rows.map(normalizeShipment));
+				const rows = normalizeConsignmentRows(res.data);
+				const normalized = rows.map(normalizeShipment);
+				setShipments(normalized);
+				await Promise.all(normalized.slice(0, 20).map((item) => loadShipmentDocuments(item.shipment_id)));
 			} catch {
 				setShipments([]);
 			} finally {
@@ -43,10 +69,41 @@ export default function ShipperDocuments() {
 		() =>
 			shipments.slice(0, 8).map((shipment) => ({
 				shipment,
-				docs: requiredDocs(shipment),
+				docs: DOC_DEFS.map((def) => {
+					const existing = docsByShipment[shipment.shipment_id]?.[def.key];
+					return {
+						...def,
+						existing,
+						status: existing ? 'uploaded' : def.optional ? 'optional' : 'missing',
+					};
+				}),
 			})),
-		[shipments],
+		[shipments, docsByShipment],
 	);
+
+	const onDocAction = async (shipmentId, doc) => {
+		const actionKey = `${shipmentId}-${doc.key}`;
+		if (doc.existing?.file_url) {
+			window.open(doc.existing.file_url, '_blank', 'noopener,noreferrer');
+			return;
+		}
+
+		const fileUrl = window.prompt(`Paste ${doc.label} URL`);
+		if (!fileUrl) return;
+
+		setActionLoading((prev) => ({ ...prev, [actionKey]: true }));
+		try {
+			await api.post(ENDPOINTS.SHIPPER_SHIPMENT_DOCS(shipmentId), {
+				doc_type: doc.key,
+				file_url: fileUrl.trim(),
+			});
+			await loadShipmentDocuments(shipmentId);
+		} catch {
+			window.alert('Unable to upload document right now.');
+		} finally {
+			setActionLoading((prev) => ({ ...prev, [actionKey]: false }));
+		}
+	};
 
 	if (loading) {
 		return (
@@ -107,8 +164,18 @@ export default function ShipperDocuments() {
 											)}
 											<span style={{ fontSize: 13 }}>{doc.label}</span>
 										</div>
-										<button type="button" className="btn-outline" style={{ padding: '6px 10px', fontSize: 12 }}>
-											{doc.status === 'uploaded' ? 'View' : 'Upload'}
+										<button
+											type="button"
+											className="btn-outline"
+											style={{ padding: '6px 10px', fontSize: 12 }}
+											disabled={Boolean(actionLoading[`${shipment.shipment_id}-${doc.key}`])}
+											onClick={() => onDocAction(shipment.shipment_id, doc)}
+										>
+											{actionLoading[`${shipment.shipment_id}-${doc.key}`]
+												? 'Processing...'
+												: doc.status === 'uploaded'
+													? 'View'
+													: 'Upload'}
 										</button>
 									</div>
 								))}

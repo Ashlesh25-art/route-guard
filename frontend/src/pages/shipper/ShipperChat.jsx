@@ -5,6 +5,7 @@ import { api } from '../../config/api';
 import { ENDPOINTS } from '../../config/endpoints';
 import Spinner from '../../components/ui/Spinner';
 import EmptyState from '../../components/ui/EmptyState';
+import { useAuth } from '../../hooks/useAuth';
 
 function formatDateTime(value) {
 	if (!value) return 'N/A';
@@ -16,6 +17,7 @@ function formatDateTime(value) {
 }
 
 export default function ShipperChat() {
+	const { user } = useAuth();
 	const [loading, setLoading] = useState(true);
 	const [submitting, setSubmitting] = useState(false);
 	const [requests, setRequests] = useState([]);
@@ -138,8 +140,8 @@ export default function ShipperChat() {
 		<div>
 			<div className="page-header">
 				<div>
-					<h1 className="page-title">Negotiation Chat</h1>
-					<p className="page-subtitle">Review offers, negotiate price, and accept the best quote.</p>
+					<h1 className="page-title">Sender Negotiation Console</h1>
+					<p className="page-subtitle">Chat with logistics managers, compare offers, and accept the best one.</p>
 				</div>
 			</div>
 
@@ -207,7 +209,7 @@ export default function ShipperChat() {
 										{messages.map((msg) => (
 											<div key={msg.message_id} className="card" style={{ padding: 10 }}>
 												<div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
-													{msg.message_type} | {formatDateTime(msg.created_at)}
+													{String(msg.sender_user_id) === String(user?.user_id) ? 'You' : 'Manager'} | {msg.message_type} | {formatDateTime(msg.created_at)}
 												</div>
 												<div style={{ fontSize: 13, marginBottom: 4 }}>{msg.body || 'No text body'}</div>
 												{msg.counter_amount_usd != null ? (
