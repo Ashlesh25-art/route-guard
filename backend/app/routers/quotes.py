@@ -111,8 +111,9 @@ async def list_quote_requests(
 	elif role == 'receiver':
 		query = query.filter(QuoteRequest.receiver_id == current_user.user_id)
 	else:
-		# Manager sees all SENT/NEGOTIATING plus accepted for history
+		# Manager sees new drafts, active negotiations, and accepted history.
 		query = query.filter(QuoteRequest.status.in_([
+			QuoteRequestStatus.DRAFT,
 			QuoteRequestStatus.SENT,
 			QuoteRequestStatus.NEGOTIATING,
 			QuoteRequestStatus.ACCEPTED,
