@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from .llm_extractor import LLMZoneExtractor
+from .llm_extractor import StructuredZoneExtractor
 from .providers import collect_live_events
 from .schemas import (
     EventSource,
@@ -30,7 +30,7 @@ _ACTION_WEIGHT = {
 class GeopoliticalZoneEngine:
     def __init__(self, settings: LabSettings):
         self.settings = settings
-        self.extractor = LLMZoneExtractor(settings)
+        self.extractor = StructuredZoneExtractor(settings)
         self._zones: dict[str, Zone] = {}
         self._raw_events: list[RawEvent] = []
         self.reset_to_seed()
@@ -54,30 +54,20 @@ class GeopoliticalZoneEngine:
     def get_raw_events(self) -> list[RawEvent]:
         return self._raw_events
 
-    async def refresh(self, use_mock: bool = True) -> RefreshResponse:
-        self.reset_to_seed()
-
-        provider_counts: dict[str, int]
-        if use_mock:
-            raw_items = mock_events()
-            events = [
-                RawEvent(
-                    event_id=f"mock-{idx}",
-                    source=EventSource.MOCK,
-                    title=item["title"],
-                    description=item["description"],
-                    latitude=item["latitude"],
-                    longitude=item["longitude"],
-                    event_type_hint=item["hint"],
-                    metadata={"provider": "mock"},
-                )
-                for idx, item in enumerate(raw_items)
-            ]
-            provider_counts = {"mock": len(events)}
-        else:
-            events, provider_counts = await collect_live_events(self.settings)
+    async def ingest_raw_events(
+        self,
+        events: list[RawEvent],
+        *,
+        mode: str,
+        provider_counts: dict[str, int] | None = None,
+        reset_to_seed: bool = False,
+    ) -> RefreshResponse:
+        if reset_to_seed:
+            self.reset_to_seed()
 
         self._raw_events = events
+        if provider_counts is None:
+            provider_counts = {mode: len(events)}
 
         created = 0
         dedupe_keys: set[str] = {
@@ -106,11 +96,42 @@ class GeopoliticalZoneEngine:
         now = now_utc()
         return RefreshResponse(
             timestamp=now,
-            mode="mock" if use_mock else "live",
+            mode=mode,
             provider_counts=provider_counts,
             total_events=len(events),
             zones_created=created,
             zones_total_active=len(self._active_zones()),
+        )
+
+    async def refresh(self, use_mock: bool = True) -> RefreshResponse:
+        if use_mock:
+            raw_items = mock_events()
+            events = [
+                RawEvent(
+                    event_id=f"mock-{idx}",
+                    source=EventSource.MOCK,
+                    title=item["title"],
+                    description=item["description"],
+                    latitude=item["latitude"],
+                    longitude=item["longitude"],
+                    event_type_hint=item["hint"],
+                    metadata={"provider": "mock"},
+                )
+                for idx, item in enumerate(raw_items)
+            ]
+            return await self.ingest_raw_events(
+                events,
+                mode="mock",
+                provider_counts={"mock": len(events)},
+                reset_to_seed=True,
+            )
+
+        events, provider_counts = await collect_live_events(self.settings)
+        return await self.ingest_raw_events(
+            events,
+            mode="live",
+            provider_counts=provider_counts,
+            reset_to_seed=True,
         )
 
     def evaluate_route(self, request: RouteEvaluateRequest) -> RouteEvaluateResponse:
