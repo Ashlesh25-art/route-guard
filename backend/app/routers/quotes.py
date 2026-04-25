@@ -313,12 +313,28 @@ async def list_shipper_consignments(current_user: User = Depends(get_current_use
 		.order_by(Shipment.created_at.desc())
 		.all()
 	)
+	offer_amount_by_shipment: dict[str, float] = {}
+	shipment_ids = [s.shipment_id for s in items]
+	if shipment_ids:
+		mappings = db.query(QuoteToShipment).filter(QuoteToShipment.shipment_id.in_(shipment_ids)).all()
+		offer_ids = [m.offer_id for m in mappings]
+		offers = db.query(QuoteOffer).filter(QuoteOffer.offer_id.in_(offer_ids)).all() if offer_ids else []
+		offer_amount_by_id = {o.offer_id: float(o.offered_amount_usd or 0) for o in offers}
+		for m in mappings:
+			offer_amount_by_shipment[str(m.shipment_id)] = offer_amount_by_id.get(m.offer_id, 0.0)
+
 	data = [
 		{
 			'shipment_id': str(s.shipment_id),
 			'tracking_number': s.tracking_number,
 			'status': s.current_status.value if hasattr(s.current_status, 'value') else str(s.current_status),
 			'expected_arrival': s.expected_arrival.isoformat() if s.expected_arrival else None,
+			'origin_port_name': s.origin_port.port_name if s.origin_port else None,
+			'destination_port_name': s.destination_port.port_name if s.destination_port else None,
+			'manager_name': s.manager.full_name if s.manager else None,
+			'vessel_name': s.vessel.vessel_name if s.vessel else None,
+			'declared_value': float(s.cargo.declared_value) if s.cargo and s.cargo.declared_value is not None else 0.0,
+			'invoice_amount_usd': offer_amount_by_shipment.get(str(s.shipment_id), 0.0),
 		}
 		for s in items
 	]

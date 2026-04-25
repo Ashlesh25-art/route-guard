@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import app.models  # noqa: F401
 from app.config import settings
 from app.database.postgres import Base, engine
-from app.routers import alerts, analytics, auth, driver, manager, monitoring, quotes, sea_routing, shipments, websocket
+from app.routers import alerts, analytics, auth, driver, manager, monitoring, quotes, sea_routing, shipper, shipments, websocket
 
 
 @asynccontextmanager
@@ -87,6 +87,7 @@ app.include_router(manager.router,    prefix="/manager",   tags=["👔 Manager"]
 app.include_router(driver.router,     prefix="/driver",    tags=["🚛 Driver"])
 app.include_router(analytics.router,  prefix="/analytics", tags=["📊 Analytics"])
 app.include_router(quotes.router,                          tags=["💬 Quotes & Negotiation"])
+app.include_router(shipper.router,                         tags=["📮 Shipper Operations"])
 app.include_router(websocket.router,                       tags=["🔌 WebSocket"])
 app.include_router(sea_routing.router, prefix="/sea-route", tags=["🌊 Sea Routing"])
 
