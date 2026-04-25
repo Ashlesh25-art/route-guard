@@ -90,6 +90,70 @@ function toPositions(waypoints = []) {
     .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
 }
 
+function shipmentIdOf(shipment) {
+  if (!shipment || typeof shipment !== 'object') return null;
+  return shipment.shipment_id || shipment.id || shipment.consignment_id || shipment.request_id || null;
+}
+
+function parseShipmentsPayload(payload) {
+  const asArray = (value) => (Array.isArray(value) ? value : []);
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === 'object') {
+    const grouped = [
+      ...asArray(payload.pending),
+      ...asArray(payload.in_transit),
+      ...asArray(payload.completed),
+      ...asArray(payload.delayed),
+      ...asArray(payload.cancelled),
+      ...asArray(payload.delivered),
+      ...asArray(payload.shipments),
+      ...asArray(payload.items),
+      ...asArray(payload.data),
+    ];
+    if (grouped.length) return grouped;
+  }
+  return [];
+}
+
+async function enrichShipmentsWithRouteDetails(rows = []) {
+  const normalizedRows = rows.map(normalizeShipment);
+  const toFetch = normalizedRows.filter((row) => !Array.isArray(row.route_waypoints) || row.route_waypoints.length < 2);
+  if (!toFetch.length) return normalizedRows;
+
+  const detailEntries = await Promise.allSettled(
+    toFetch.map(async (row) => {
+      const shipmentId = shipmentIdOf(row);
+      if (!shipmentId) return null;
+      const response = await api.get(ENDPOINTS.SHIPMENT_DETAIL(shipmentId));
+      return normalizeShipment(response.data || {});
+    }),
+  );
+
+  const detailMap = new Map();
+  detailEntries.forEach((entry) => {
+    if (entry.status !== 'fulfilled' || !entry.value) return;
+    const id = shipmentIdOf(entry.value);
+    if (!id) return;
+    detailMap.set(id, entry.value);
+  });
+
+  return normalizedRows.map((row) => {
+    const id = shipmentIdOf(row);
+    const detailed = id ? detailMap.get(id) : null;
+    if (!detailed) return row;
+    return {
+      ...row,
+      ...detailed,
+      shipment_id: row.shipment_id || detailed.shipment_id || id,
+      route_waypoints: (Array.isArray(detailed.route_waypoints) && detailed.route_waypoints.length)
+        ? detailed.route_waypoints
+        : row.route_waypoints,
+      current_latitude: detailed.current_latitude ?? row.current_latitude,
+      current_longitude: detailed.current_longitude ?? row.current_longitude,
+    };
+  });
+}
+
 function MapViewportController({ selectedShipment }) {
   const map = useMap();
 
@@ -104,6 +168,10 @@ function MapViewportController({ selectedShipment }) {
     const lng = Number(selectedShipment.current_longitude);
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
       map.setView([lat, lng], 5);
+      return;
+    }
+    if (routePositions.length === 1) {
+      map.setView(routePositions[0], 5);
     }
   }, [map, selectedShipment]);
 
@@ -248,9 +316,9 @@ function DetailPanel({ s, onClose, onViewDetails, showML }) {
       </div>
 
       {/* View Full Details button */}
-      {onViewDetails && !String(s.shipment_id || '').startsWith('demo-') && (
+      {onViewDetails && !String(shipmentIdOf(s) || '').startsWith('demo-') && (
         <div className="ct-detail-section" style={{ borderBottom: 'none' }}>
-          <button onClick={() => onViewDetails(s.shipment_id)} style={{ width: '100%', background: `linear-gradient(135deg, ${C.teal}, #22d3ee)`, color: '#000', fontWeight: 700, fontSize: 13, padding: '12px 20px', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'Space Grotesk', sans-serif", transition: 'all .2s' }}>
+          <button onClick={() => onViewDetails(shipmentIdOf(s))} style={{ width: '100%', background: `linear-gradient(135deg, ${C.teal}, #22d3ee)`, color: '#000', fontWeight: 700, fontSize: 13, padding: '12px 20px', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'Space Grotesk', sans-serif", transition: 'all .2s' }}>
             View Full Details →
           </button>
         </div>
@@ -277,28 +345,52 @@ export default function CargoTrackMap({ initialShipments, initialSelected, mode 
 
   // Fetch live shipments if none passed
   useEffect(() => {
-    if (initialShipments) { setShipments(initialShipments); return; }
-    const endpoint = isShipperMode ? ENDPOINTS.CONSIGNMENTS : ENDPOINTS.ALL_SHIPMENTS;
-    api.get(endpoint)
-      .then((r) => {
-        if (Array.isArray(r.data) && r.data.length) {
-          setShipments(r.data.map(normalizeShipment));
-        }
-      })
-      .catch(() => {
+    let mounted = true;
+    const run = async () => {
+      if (initialShipments) {
+        const normalized = initialShipments.map(normalizeShipment);
+        if (!mounted) return;
+        setShipments(normalized);
+        return;
+      }
+
+      try {
         if (isShipperMode) {
-          api.get(ENDPOINTS.MY_SHIPMENTS)
-            .then((r) => {
-              if (Array.isArray(r.data) && r.data.length) {
-                setShipments(r.data.map(normalizeShipment));
-              }
-            })
-            .catch(() => {});
+          const [consignmentsRes, myShipmentsRes] = await Promise.all([
+            api.get(ENDPOINTS.CONSIGNMENTS).catch(() => ({ data: [] })),
+            api.get(ENDPOINTS.MY_SHIPMENTS).catch(() => ({ data: [] })),
+          ]);
+          const consignmentsRows = parseShipmentsPayload(consignmentsRes.data);
+          const myRows = parseShipmentsPayload(myShipmentsRes.data);
+          const combined = [...consignmentsRows, ...myRows];
+          const byId = new Map();
+          combined.forEach((row) => {
+            const normalized = normalizeShipment(row);
+            const id = shipmentIdOf(normalized);
+            if (!id) return;
+            byId.set(id, { ...(byId.get(id) || {}), ...normalized, shipment_id: id });
+          });
+          const mergedRows = Array.from(byId.values());
+          const enriched = await enrichShipmentsWithRouteDetails(mergedRows);
+          if (!mounted) return;
+          setShipments(enriched.length ? enriched : DEMO);
+          return;
         }
-      });
+
+        const response = await api.get(ENDPOINTS.ALL_SHIPMENTS);
+        const rows = parseShipmentsPayload(response.data).map(normalizeShipment);
+        if (!mounted) return;
+        setShipments(rows.length ? rows : DEMO);
+      } catch {
+        if (!mounted) return;
+        setShipments(DEMO);
+      }
+    };
+    run();
+    return () => { mounted = false; };
   }, [initialShipments, isShipperMode]);
 
-  useEffect(() => { if (initialSelected) setSelected(initialSelected); }, [initialSelected]);
+  useEffect(() => { if (initialSelected) setSelected(normalizeShipment(initialSelected)); }, [initialSelected]);
 
   const FILTERS = ['all', 'in_transit', 'picked_up', 'delayed', 'at_port', 'delivered'];
   const filtered = shipments.filter(s => {
@@ -329,7 +421,7 @@ export default function CargoTrackMap({ initialShipments, initialSelected, mode 
           <div style={{ padding: '8px 12px', fontSize: 11, color: C.dim }}>{filtered.length} shipments</div>
           <div className="ct-list">
             {filtered.map(s => (
-              <ShipmentCard key={s.shipment_id} s={s} active={selected?.shipment_id === s.shipment_id} onClick={() => setSelected(s)} />
+              <ShipmentCard key={shipmentIdOf(s) || s.tracking_number} s={s} active={shipmentIdOf(selected) === shipmentIdOf(s)} onClick={() => setSelected(s)} />
             ))}
           </div>
         </div>
@@ -341,19 +433,24 @@ export default function CargoTrackMap({ initialShipments, initialSelected, mode 
             <MapViewportController selectedShipment={selected} />
             {filtered.map(s => {
               const positions = toPositions(s.route_waypoints || []);
-              if (!positions.length) return null;
-              const isActive = selected?.shipment_id === s.shipment_id;
+              const currentLat = Number(s.current_latitude);
+              const currentLng = Number(s.current_longitude);
+              const hasCurrentPoint = Number.isFinite(currentLat) && Number.isFinite(currentLng);
+              if (!positions.length && !hasCurrentPoint) return null;
+              const isActive = shipmentIdOf(selected) === shipmentIdOf(s);
               const color = riskColor(s.current_risk_level);
               return (
-                <Fragment key={s.shipment_id}>
-                  <Polyline positions={positions} pathOptions={{ color: isActive ? C.teal : color, weight: isActive ? 3 : 1.5, opacity: isActive ? 1 : 0.5, dashArray: s.current_status === 'delayed' ? '6,4' : null }} eventHandlers={{ click: () => setSelected(s) }} />
-                  {s.current_latitude && (
-                    <CircleMarker center={[s.current_latitude, s.current_longitude]} radius={isActive ? 10 : 7} pathOptions={{ color: isActive ? C.teal : color, fillColor: isActive ? C.teal : color, fillOpacity: 0.9, weight: isActive ? 3 : 1 }} eventHandlers={{ click: () => setSelected(s) }}>
+                <Fragment key={shipmentIdOf(s) || s.tracking_number}>
+                  {positions.length >= 2 ? (
+                    <Polyline positions={positions} pathOptions={{ color: isActive ? C.teal : color, weight: isActive ? 3 : 1.5, opacity: isActive ? 1 : 0.5, dashArray: s.current_status === 'delayed' ? '6,4' : null }} eventHandlers={{ click: () => setSelected(s) }} />
+                  ) : null}
+                  {hasCurrentPoint ? (
+                    <CircleMarker center={[currentLat, currentLng]} radius={isActive ? 10 : 7} pathOptions={{ color: isActive ? C.teal : color, fillColor: isActive ? C.teal : color, fillOpacity: 0.9, weight: isActive ? 3 : 1 }} eventHandlers={{ click: () => setSelected(s) }}>
                       <Tooltip permanent={isActive} direction="top" offset={[0, -10]}>
                         <span style={{ fontSize: 11, fontWeight: 700 }}>{s.tracking_number}</span>
                       </Tooltip>
                     </CircleMarker>
-                  )}
+                  ) : null}
                   {positions[0] && <CircleMarker center={positions[0]} radius={5} pathOptions={{ color: C.green, fillColor: C.green, fillOpacity: 1, weight: 1 }} />}
                   {positions[positions.length - 1] && <CircleMarker center={positions[positions.length - 1]} radius={5} pathOptions={{ color: C.gray, fillColor: C.gray, fillOpacity: 1, weight: 1 }} />}
                 </Fragment>
