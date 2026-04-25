@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database.postgres import get_db
@@ -9,6 +10,7 @@ from app.dependencies import get_current_user
 from app.models.cargo import Cargo
 from app.models.logistics_service_lane import LogisticsServiceLane
 from app.models.negotiation_message import NegotiationMessage
+from app.models.port import Port
 from app.models.quote_offer import QuoteOffer, QuoteOfferStatus
 from app.models.quote_request import QuoteRequest, QuoteRequestStatus
 from app.models.quote_to_shipment import QuoteToShipment
@@ -26,6 +28,41 @@ from app.schemas.quote import (
 from app.services.shipment_service import generate_tracking_number
 
 router = APIRouter()
+
+
+def _enrich_request(req: QuoteRequest, db: Session) -> dict:
+	"""Enrich a quote request with port names, shipper/receiver names, and offer count."""
+	origin_port = db.query(Port).filter(Port.port_id == req.origin_port_id).first()
+	dest_port = db.query(Port).filter(Port.port_id == req.destination_port_id).first()
+	offer_count = db.query(func.count(QuoteOffer.offer_id)).filter(QuoteOffer.request_id == req.request_id).scalar() or 0
+	shipper = db.query(User).filter(User.user_id == req.shipper_id).first()
+	receiver = db.query(User).filter(User.user_id == req.receiver_id).first()
+	return {
+		'request_id': str(req.request_id),
+		'shipper_id': str(req.shipper_id),
+		'shipper_name': shipper.full_name if shipper else None,
+		'shipper_company': shipper.company_name if shipper else None,
+		'receiver_id': str(req.receiver_id),
+		'receiver_name': receiver.full_name if receiver else None,
+		'origin_port_id': str(req.origin_port_id),
+		'origin_port_name': origin_port.port_name if origin_port else None,
+		'origin_port_country': origin_port.country if origin_port else None,
+		'destination_port_id': str(req.destination_port_id),
+		'destination_port_name': dest_port.port_name if dest_port else None,
+		'destination_port_country': dest_port.country if dest_port else None,
+		'pickup_address': req.pickup_address,
+		'dropoff_address': req.dropoff_address,
+		'cargo_type': req.cargo_type.value if req.cargo_type else None,
+		'quantity': req.quantity,
+		'weight_kg': float(req.weight_kg) if req.weight_kg else None,
+		'volume_cbm': float(req.volume_cbm) if req.volume_cbm else None,
+		'special_instructions': req.special_instructions,
+		'status': req.status.value if req.status else None,
+		'selected_offer_id': str(req.selected_offer_id) if req.selected_offer_id else None,
+		'offer_count': offer_count,
+		'created_at': req.created_at.isoformat() if req.created_at else None,
+		'updated_at': req.updated_at.isoformat() if req.updated_at else None,
+	}
 
 
 def _role_value(user: User) -> str:
@@ -61,7 +98,7 @@ async def create_quote_request(
 	return QuoteRequestResponse.model_validate(record)
 
 
-@router.get('/quote-requests', response_model=list[QuoteRequestResponse])
+@router.get('/quote-requests')
 async def list_quote_requests(
 	status_filter: QuoteRequestStatus | None = None,
 	current_user: User = Depends(get_current_user),
@@ -74,16 +111,24 @@ async def list_quote_requests(
 	elif role == 'receiver':
 		query = query.filter(QuoteRequest.receiver_id == current_user.user_id)
 	else:
-		query = query.filter(QuoteRequest.status.in_([QuoteRequestStatus.SENT, QuoteRequestStatus.NEGOTIATING]))
+		# Manager sees all SENT/NEGOTIATING plus accepted for history
+		query = query.filter(QuoteRequest.status.in_([
+			QuoteRequestStatus.SENT,
+			QuoteRequestStatus.NEGOTIATING,
+			QuoteRequestStatus.ACCEPTED,
+		]))
 
 	if status_filter:
 		query = query.filter(QuoteRequest.status == status_filter)
 
 	items = query.order_by(QuoteRequest.created_at.desc()).all()
+	# Managers get enriched dicts; shippers/receivers get Pydantic models
+	if role == 'manager':
+		return [_enrich_request(item, db) for item in items]
 	return [QuoteRequestResponse.model_validate(item) for item in items]
 
 
-@router.get('/quote-requests/{request_id}', response_model=QuoteRequestResponse)
+@router.get('/quote-requests/{request_id}')
 async def get_quote_request(request_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
 	item = db.query(QuoteRequest).filter(QuoteRequest.request_id == UUID(request_id)).first()
 	if not item:
