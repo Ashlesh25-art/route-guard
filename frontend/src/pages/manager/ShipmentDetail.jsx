@@ -217,35 +217,43 @@ export default function ShipmentDetail(){
 
   // ── Journey progress calculations ────────────────────────────────────────
   const wp = shipment.route_waypoints||[];
-  const totalDistKm = shipment.route_distance_km ? Number(shipment.route_distance_km) : 0;
+
+  // Haversine helper (km)
+  const hav=(a,b)=>{
+    const R=6371;
+    const aLat=Number(a.lat||a.latitude||0), aLng=Number(a.lng||a.longitude||0);
+    const bLat=Number(b.lat||b.latitude||0), bLng=Number(b.lng||b.longitude||0);
+    const dLat=(bLat-aLat)*Math.PI/180, dLng=(bLng-aLng)*Math.PI/180;
+    const x=Math.sin(dLat/2)**2+Math.cos(aLat*Math.PI/180)*Math.cos(bLat*Math.PI/180)*Math.sin(dLng/2)**2;
+    return 2*R*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+  };
+
+  // Compute total distance from waypoints if DB field is missing
+  let computedDistKm = 0;
+  if(wp.length>1){ for(let i=0;i<wp.length-1;i++) computedDistKm+=hav(wp[i],wp[i+1]); }
+  const totalDistKm = shipment.route_distance_km ? Number(shipment.route_distance_km) : computedDistKm;
 
   // Find nearest waypoint to current position
   const curLat = shipment.current_latitude ? Number(shipment.current_latitude) : null;
   const curLng = shipment.current_longitude ? Number(shipment.current_longitude) : null;
   let coveredDistKm = 0;
   if(curLat && curLng && wp.length>1){
-    // Haversine helper
-    const hav=(a,b)=>{
-      const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180;
-      const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
-      return 2*R*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
-    };
     let minD=Infinity,splitIdx=0;
     wp.forEach((p,i)=>{ const d=hav(p,{lat:curLat,lng:curLng}); if(d<minD){minD=d;splitIdx=i;} });
     for(let i=0;i<splitIdx;i++) coveredDistKm+=hav(wp[i],wp[i+1]);
     coveredDistKm+=hav(wp[splitIdx],{lat:curLat,lng:curLng});
-    coveredDistKm=Math.min(coveredDistKm,totalDistKm);
+    if(totalDistKm>0) coveredDistKm=Math.min(coveredDistKm,totalDistKm);
   }
-  const remainingDistKm = Math.max(0, totalDistKm - coveredDistKm);
-  const progressPct = totalDistKm>0 ? Math.round((coveredDistKm/totalDistKm)*100) : 0;
+  const remainingDistKm = totalDistKm>0 ? Math.max(0, totalDistKm - coveredDistKm) : 0;
+  const progressPct = totalDistKm>0 ? Math.min(100, Math.round((coveredDistKm/totalDistKm)*100)) : 0;
 
   // Estimate speed: distance covered / elapsed hours
-  const departedAt = shipment.departure_time ? new Date(shipment.departure_time) : null;
+  const departedAt = shipment.departure_time ? new Date(shipment.departure_time) : (shipment.created_at ? new Date(shipment.created_at) : null);
   const elapsedHr = departedAt ? Math.max(0,(Date.now()-departedAt.getTime())/3600000) : null;
   const estimatedSpeedKmh = (elapsedHr && elapsedHr>0.5 && coveredDistKm>0) ? Math.round(coveredDistKm/elapsedHr) : null;
-  const avgSpeed = estimatedSpeedKmh || 28; // fallback to average vessel speed
+  const avgSpeed = estimatedSpeedKmh || (shipment.route_duration_hr && totalDistKm>0 ? Math.round(totalDistKm/Number(shipment.route_duration_hr)) : 28);
   const remainingHr = remainingDistKm>0 ? (remainingDistKm/avgSpeed) : null;
-  const etaDate = remainingHr ? new Date(Date.now()+remainingHr*3600000) : null;
+  const etaDate = remainingHr ? new Date(Date.now()+remainingHr*3600000) : (shipment.expected_arrival ? new Date(shipment.expected_arrival) : null);
 
   // ── Feature importance for Why Reroute ───────────────────────────────────
   const featureImp = prediction?.feature_importance||{};
@@ -488,7 +496,7 @@ export default function ShipmentDetail(){
           </Card>
 
           {/* Journey Progress Card */}
-          {(curLat||totalDistKm>0)&&(
+          {(curLat||totalDistKm>0||wp.length>1)&&(
             <Card className="fade-in" accent="#00d4b4">
               <SectionTitle>🚢 Voyage Progress</SectionTitle>
               {/* Progress bar */}
@@ -499,7 +507,7 @@ export default function ShipmentDetail(){
                   <span>{shipment.destination_port_name}</span>
                 </div>
                 <div style={{height:10,background:'var(--bg-elevated,#0d1526)',borderRadius:10,overflow:'hidden',position:'relative'}}>
-                  <div style={{height:'100%',width:`${progressPct}%`,background:'linear-gradient(90deg,#00d4b4,#22d3ee)',borderRadius:10,transition:'width 1s ease',boxShadow:'0 0 10px rgba(0,212,180,.4)'}}>
+                  <div style={{height:'100%',width:`${Math.max(progressPct,2)}%`,background:'linear-gradient(90deg,#00d4b4,#22d3ee)',borderRadius:10,transition:'width 1s ease',boxShadow:'0 0 10px rgba(0,212,180,.4)'}}>
                     <div style={{position:'absolute',right:0,top:'50%',transform:'translateY(-50%)',width:12,height:12,background:'#fff',borderRadius:'50%',boxShadow:'0 0 6px #00d4b4'}}/>
                   </div>
                 </div>
@@ -507,12 +515,12 @@ export default function ShipmentDetail(){
               {/* Stats grid */}
               <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:8}}>
                 <div style={{background:'var(--bg-elevated,#0d1526)',borderRadius:8,padding:'10px 12px'}}>
-                  <div style={{fontSize:16,fontWeight:700,color:'#00d4b4',fontFamily:"'JetBrains Mono',monospace"}}>{coveredDistKm>0?`${Math.round(coveredDistKm).toLocaleString()} km`:'—'}</div>
+                  <div style={{fontSize:16,fontWeight:700,color:'#00d4b4',fontFamily:"'JetBrains Mono',monospace"}}>{coveredDistKm>0?`${Math.round(coveredDistKm).toLocaleString()} km`:(curLat?'0 km':'Waiting')}</div>
                   <div style={{fontSize:10,color:'var(--text-muted)',marginTop:2}}>Distance Covered</div>
                 </div>
                 <div style={{background:'var(--bg-elevated,#0d1526)',borderRadius:8,padding:'10px 12px'}}>
-                  <div style={{fontSize:16,fontWeight:700,color:'#f59e0b',fontFamily:"'JetBrains Mono',monospace"}}>{remainingDistKm>0?`${Math.round(remainingDistKm).toLocaleString()} km`:'—'}</div>
-                  <div style={{fontSize:10,color:'var(--text-muted)',marginTop:2}}>Distance Remaining</div>
+                  <div style={{fontSize:16,fontWeight:700,color:'#f59e0b',fontFamily:"'JetBrains Mono',monospace"}}>{totalDistKm>0?`${Math.round(remainingDistKm>0?remainingDistKm:totalDistKm).toLocaleString()} km`:'—'}</div>
+                  <div style={{fontSize:10,color:'var(--text-muted)',marginTop:2}}>{coveredDistKm>0?'Distance Remaining':'Total Route Distance'}</div>
                 </div>
                 <div style={{background:'var(--bg-elevated,#0d1526)',borderRadius:8,padding:'10px 12px'}}>
                   <div style={{fontSize:16,fontWeight:700,color:'#22d3ee',fontFamily:"'JetBrains Mono',monospace"}}>{estimatedSpeedKmh?`${estimatedSpeedKmh} km/h`:`~${avgSpeed} km/h`}</div>
@@ -520,7 +528,7 @@ export default function ShipmentDetail(){
                 </div>
                 <div style={{background:'var(--bg-elevated,#0d1526)',borderRadius:8,padding:'10px 12px'}}>
                   <div style={{fontSize:16,fontWeight:700,color:etaDate?'#10b981':'var(--text-primary)',fontFamily:"'JetBrains Mono',monospace"}}>{etaDate?etaDate.toLocaleString('en-IN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}</div>
-                  <div style={{fontSize:10,color:'var(--text-muted)',marginTop:2}}>Recalculated ETA</div>
+                  <div style={{fontSize:10,color:'var(--text-muted)',marginTop:2}}>{remainingHr?'Recalculated ETA':'Expected Arrival'}</div>
                 </div>
               </div>
               {remainingHr!=null&&(
