@@ -39,6 +39,7 @@ const ICON_MAP = {
 const NAV_CONFIG = {
 	manager: [
 		{ label: 'Mission Control',      icon: 'LayoutDashboard', path: '/manager',                  section: 'OVERVIEW' },
+		{ label: 'Offer Console',        icon: 'MessageSquare',    path: '/manager/offers',           section: null },
 		{ label: 'Live Map',             icon: 'Anchor',          path: '/manager?tab=shipments',     section: null },
 		{ label: 'Alerts Center',        icon: 'Bell',            path: '/manager?tab=alerts',        section: null, badge: '4' },
 		{ label: 'Consignment Requests', icon: 'PackagePlus',     path: '/manager?tab=requests',      section: 'OPERATIONS', badge: '3' },
@@ -183,7 +184,7 @@ export default function Sidebar() {
 						<Badge level="low" size="sm">{user?.role || 'user'}</Badge>
 					</div>
 				</div>
-				{(user?.role === 'manager' || user?.role === 'driver') && (
+				{user?.role === 'driver' && (
 					<ChatButton />
 				)}
 				<button type="button" className="btn-outline" onClick={logout} style={{display:'flex',alignItems:'center',gap:8}}>

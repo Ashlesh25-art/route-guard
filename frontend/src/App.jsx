@@ -7,6 +7,7 @@ import RouteChangeAlert from './pages/driver/RouteChangeAlert';
 import StatusUpdate from './pages/driver/StatusUpdate';
 import AnalyticsPage from './pages/manager/AnalyticsPage';
 import ManagerDashboard from './pages/manager/ManagerDashboard';
+import ManagerOfferConsole from './pages/manager/ManagerOfferConsole';
 import PortStatusBoard from './pages/manager/PortStatusBoard';
 import ShipmentDetail from './pages/manager/ShipmentDetail';
 import ConfirmDelivery from './pages/receiver/ConfirmDelivery';
@@ -116,6 +117,14 @@ export default function App() {
 					element={
 						<RoleGuard allowedRoles={['manager']}>
 							<ShipmentDetail />
+						</RoleGuard>
+					}
+				/>
+				<Route
+					path="manager/offers"
+					element={
+						<RoleGuard allowedRoles={['manager']}>
+							<ManagerOfferConsole />
 						</RoleGuard>
 					}
 				/>

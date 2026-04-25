@@ -39,6 +39,28 @@ export default function LoginPage() {
 	const [confirmPassword, setConfirmPassword] = useState('');
 	const [industryType, setIndustryType] = useState('Electronics');
 	const [otherIndustry, setOtherIndustry] = useState('');
+	const [companyType, setCompanyType] = useState('logistics_provider');
+	const [registrationNumber, setRegistrationNumber] = useState('');
+	const [taxVatNumber, setTaxVatNumber] = useState('');
+	const [hqAddress, setHqAddress] = useState('');
+	const [website, setWebsite] = useState('');
+	const [contactName, setContactName] = useState('');
+	const [contactDesignation, setContactDesignation] = useState('');
+	const [typicalCargo, setTypicalCargo] = useState('');
+	const [monthlyVolumeBand, setMonthlyVolumeBand] = useState('10-50');
+	const [preferredPortIds, setPreferredPortIds] = useState([]);
+	const [availablePorts, setAvailablePorts] = useState([]);
+	const [serviceLanes, setServiceLanes] = useState([
+		{
+			origin_port_id: '',
+			destination_port_id: '',
+			service_mode: 'sea',
+			min_transit_days: '',
+			max_transit_days: '',
+			base_price_usd: '',
+			price_per_kg_usd: '',
+		},
+	]);
 	const [acceptTerms, setAcceptTerms] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState('');
@@ -71,6 +93,29 @@ export default function LoginPage() {
 		setSelectedRole(nextRole);
 	};
 
+	const updateLane = (index, key, value) => {
+		setServiceLanes((prev) => prev.map((lane, idx) => (idx === index ? { ...lane, [key]: value } : lane)));
+	};
+
+	const addLane = () => {
+		setServiceLanes((prev) => [
+			...prev,
+			{
+				origin_port_id: '',
+				destination_port_id: '',
+				service_mode: 'sea',
+				min_transit_days: '',
+				max_transit_days: '',
+				base_price_usd: '',
+				price_per_kg_usd: '',
+			},
+		]);
+	};
+
+	const removeLane = (index) => {
+		setServiceLanes((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== index) : prev));
+	};
+
 	const handleLogin = async (event) => {
 		event.preventDefault();
 		setLoading(true);
@@ -90,6 +135,13 @@ export default function LoginPage() {
 					setError('Please accept the terms and conditions to continue.');
 					return;
 				}
+				if (selectedRole === 'manager') {
+					const hasInvalidLane = serviceLanes.some((lane) => !lane.origin_port_id || !lane.destination_port_id || lane.origin_port_id === lane.destination_port_id);
+					if (hasInvalidLane) {
+						setError('For logistics signup, each service lane needs valid origin and destination ports.');
+						return;
+					}
+				}
 
 				const registerPayload = {
 					full_name: fullName.trim(),
@@ -99,6 +151,32 @@ export default function LoginPage() {
 					company_name: companyName.trim() || null,
 					phone_number: phoneNumber.trim() || null,
 				};
+				if (selectedRole === 'manager') {
+					registerPayload.company_profile = {
+						company_type: companyType || null,
+						registration_number: registrationNumber.trim() || null,
+						tax_vat_number: taxVatNumber.trim() || null,
+						hq_address: hqAddress.trim() || null,
+						website: website.trim() || null,
+						contact_name: contactName.trim() || null,
+						contact_designation: contactDesignation.trim() || null,
+						typical_cargo: typicalCargo.trim() || null,
+						monthly_volume_band: monthlyVolumeBand || null,
+						preferred_ports: preferredPortIds.length ? preferredPortIds : null,
+					};
+				}
+				if (selectedRole === 'manager') {
+					registerPayload.service_lanes = serviceLanes.map((lane) => ({
+						origin_port_id: lane.origin_port_id,
+						destination_port_id: lane.destination_port_id,
+						service_mode: lane.service_mode || 'sea',
+						min_transit_days: lane.min_transit_days ? Number(lane.min_transit_days) : null,
+						max_transit_days: lane.max_transit_days ? Number(lane.max_transit_days) : null,
+						base_price_usd: lane.base_price_usd ? Number(lane.base_price_usd) : null,
+						price_per_kg_usd: lane.price_per_kg_usd ? Number(lane.price_per_kg_usd) : null,
+						active: true,
+					}));
+				}
 
 				const result = await register(registerPayload);
 				if (!result.success) {
@@ -149,6 +227,27 @@ export default function LoginPage() {
 			}
 		});
 	}, [authOpen, isSignup, selectedRole]);
+
+	useEffect(() => {
+		const shouldLoadPorts = isSignup && selectedRole === 'manager';
+		if (!shouldLoadPorts) return;
+		let active = true;
+		const loadPorts = async () => {
+			try {
+				const response = await api.get(ENDPOINTS.PUBLIC_PORTS);
+				if (!active) return;
+				const rows = Array.isArray(response.data) ? response.data : [];
+				setAvailablePorts(rows);
+			} catch {
+				if (!active) return;
+				setAvailablePorts([]);
+			}
+		};
+		loadPorts();
+		return () => {
+			active = false;
+		};
+	}, [isSignup, selectedRole]);
 
 	return (
 		<div className="portal-auth" data-theme={theme}>
@@ -278,6 +377,136 @@ export default function LoginPage() {
 										companyName={companyName}
 										onCompanyNameChange={setCompanyName}
 									/>
+									{selectedRole === 'manager' ? (
+										<>
+											<div className="portal-auth__section-title portal-auth__full-width">Logistics Company Setup</div>
+											<div className="portal-auth__form-group">
+												<label>Company Type</label>
+												<select value={companyType} onChange={(event) => setCompanyType(event.target.value)}>
+													<option value="logistics_provider">Logistics Provider</option>
+													<option value="freight_forwarder">Freight Forwarder</option>
+													<option value="shipping_line">Shipping Line</option>
+													<option value="3pl">3PL</option>
+												</select>
+											</div>
+											<div className="portal-auth__form-group">
+												<label>Registration Number</label>
+												<input type="text" value={registrationNumber} onChange={(event) => setRegistrationNumber(event.target.value)} placeholder="Company registration number" />
+											</div>
+											<div className="portal-auth__form-group">
+												<label>Tax / VAT Number</label>
+												<input type="text" value={taxVatNumber} onChange={(event) => setTaxVatNumber(event.target.value)} placeholder="Tax or VAT ID" />
+											</div>
+											<div className="portal-auth__form-group">
+												<label>Website</label>
+												<input type="url" value={website} onChange={(event) => setWebsite(event.target.value)} placeholder="https://example.com" />
+											</div>
+											<div className="portal-auth__form-group portal-auth__full-width">
+												<label>Head Office Address</label>
+												<textarea value={hqAddress} onChange={(event) => setHqAddress(event.target.value)} placeholder="Head office / operations address" />
+											</div>
+											<div className="portal-auth__form-group">
+												<label>Primary Contact Name</label>
+												<input type="text" value={contactName} onChange={(event) => setContactName(event.target.value)} placeholder="Primary operations contact" />
+											</div>
+											<div className="portal-auth__form-group">
+												<label>Contact Designation</label>
+												<input type="text" value={contactDesignation} onChange={(event) => setContactDesignation(event.target.value)} placeholder="Operations Manager, Director, etc." />
+											</div>
+											<div className="portal-auth__form-group">
+												<label>Typical Cargo</label>
+												<input type="text" value={typicalCargo} onChange={(event) => setTypicalCargo(event.target.value)} placeholder="Electronics, perishable, hazmat..." />
+											</div>
+											<div className="portal-auth__form-group">
+												<label>Monthly Volume</label>
+												<select value={monthlyVolumeBand} onChange={(event) => setMonthlyVolumeBand(event.target.value)}>
+													<option value="lt10">Below 10 shipments</option>
+													<option value="10-50">10 to 50 shipments</option>
+													<option value="gt50">More than 50 shipments</option>
+												</select>
+											</div>
+											<div className="portal-auth__form-group portal-auth__full-width">
+												<label>Preferred Ports (multi-select)</label>
+												<select
+													multiple
+													value={preferredPortIds}
+													onChange={(event) => {
+														const values = Array.from(event.target.selectedOptions).map((option) => option.value);
+														setPreferredPortIds(values);
+													}}
+													style={{ minHeight: 120 }}
+												>
+													{availablePorts.map((port) => (
+														<option key={port.port_id} value={port.port_id}>
+															{port.port_name}, {port.country} ({port.port_code})
+														</option>
+													))}
+												</select>
+											</div>
+											<div className="portal-auth__section-title portal-auth__full-width">Service Coverage Lanes</div>
+											{serviceLanes.map((lane, index) => (
+												<div key={`lane-${index}`} className="portal-auth__full-width" style={{ border: '1px solid rgba(148, 163, 184, 0.2)', borderRadius: 10, padding: 12, marginBottom: 10 }}>
+													<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+														<div className="portal-auth__form-group">
+															<label>Origin Port *</label>
+															<select value={lane.origin_port_id} onChange={(event) => updateLane(index, 'origin_port_id', event.target.value)}>
+																<option value="">Select origin</option>
+																{availablePorts.map((port) => (
+																	<option key={`o-${port.port_id}`} value={port.port_id}>
+																		{port.port_name}, {port.country}
+																	</option>
+																))}
+															</select>
+														</div>
+														<div className="portal-auth__form-group">
+															<label>Destination Port *</label>
+															<select value={lane.destination_port_id} onChange={(event) => updateLane(index, 'destination_port_id', event.target.value)}>
+																<option value="">Select destination</option>
+																{availablePorts.map((port) => (
+																	<option key={`d-${port.port_id}`} value={port.port_id}>
+																		{port.port_name}, {port.country}
+																	</option>
+																))}
+															</select>
+														</div>
+														<div className="portal-auth__form-group">
+															<label>Service Mode</label>
+															<select value={lane.service_mode} onChange={(event) => updateLane(index, 'service_mode', event.target.value)}>
+																<option value="sea">Sea</option>
+																<option value="air">Air</option>
+																<option value="road">Road</option>
+																<option value="multimodal">Multimodal</option>
+															</select>
+														</div>
+														<div className="portal-auth__form-group">
+															<label>Base Price (USD)</label>
+															<input type="number" min="0" step="0.01" value={lane.base_price_usd} onChange={(event) => updateLane(index, 'base_price_usd', event.target.value)} placeholder="Optional" />
+														</div>
+														<div className="portal-auth__form-group">
+															<label>Min Transit Days</label>
+															<input type="number" min="1" value={lane.min_transit_days} onChange={(event) => updateLane(index, 'min_transit_days', event.target.value)} placeholder="Optional" />
+														</div>
+														<div className="portal-auth__form-group">
+															<label>Max Transit Days</label>
+															<input type="number" min="1" value={lane.max_transit_days} onChange={(event) => updateLane(index, 'max_transit_days', event.target.value)} placeholder="Optional" />
+														</div>
+														<div className="portal-auth__form-group">
+															<label>Price Per KG (USD)</label>
+															<input type="number" min="0" step="0.0001" value={lane.price_per_kg_usd} onChange={(event) => updateLane(index, 'price_per_kg_usd', event.target.value)} placeholder="Optional" />
+														</div>
+													</div>
+													<div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+														<button type="button" className="portal-auth__toggle-link" onClick={addLane}>
+															+ Add another lane
+														</button>
+														<button type="button" className="portal-auth__toggle-link" onClick={() => removeLane(index)} disabled={serviceLanes.length === 1}>
+															Remove lane
+														</button>
+													</div>
+												</div>
+											))}
+										</>
+									) : null}
 
 									<div className="portal-auth__section-title portal-auth__full-width">System Preferences</div>
 									<div className="portal-auth__form-group">

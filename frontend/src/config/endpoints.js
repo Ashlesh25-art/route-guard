@@ -5,6 +5,7 @@ export const ENDPOINTS = {
 	RECEIVERS: '/auth/receivers',
 	MANAGERS: '/auth/managers',
 	PORTS: '/auth/ports',
+	PUBLIC_PORTS: '/auth/public-ports',
 	VESSELS: '/auth/vessels',
 	ONBOARDING_STATUS: '/auth/onboarding-status',
 
@@ -21,6 +22,7 @@ export const ENDPOINTS = {
 
 	ACTIVE_ALERTS: '/alerts/active',
 	RESOLVE_ALERT: (id) => `/alerts/${id}/resolve`,
+	MARK_ALERT_READ: (id) => `/alerts/${id}/read`,
 
 	MANAGER_SUMMARY: '/manager/summary',
 	MANAGER_DRIVERS: '/manager/drivers',
@@ -43,4 +45,9 @@ export const ENDPOINTS = {
 	QUOTE_MESSAGES: (id) => `/quote-requests/${id}/messages`,
 	ACCEPT_OFFER: (id) => `/quote-offers/${id}/accept`,
 	REJECT_OFFER: (id) => `/quote-offers/${id}/reject`,
+
+	SHIPPER_ADDRESSES: '/shipper/addresses',
+	SHIPPER_SHIPMENT_DOCS: (id) => `/shipper/shipments/${id}/documents`,
+	SHIPPER_INVOICE: (id) => `/shipper/shipments/${id}/invoice`,
+	SHIPPER_REVIEW: (id) => `/shipper/shipments/${id}/review`,
 };
