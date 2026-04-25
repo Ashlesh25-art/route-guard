@@ -17,19 +17,20 @@ from app.utils.auth import create_access_token, hash_password, verify_password
 
 
 def register_user(db: Session, user_data: UserRegister) -> TokenResponse:
-	existing = db.query(User).filter(User.email == user_data.email).first()
+	email_normalized = str(user_data.email).strip().lower()
+	existing = db.query(User).filter(User.email == email_normalized).first()
 	if existing:
 		raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='Email already registered')
 
 	new_user = User(
-		full_name=user_data.full_name,
-		email=user_data.email,
+		full_name=user_data.full_name.strip(),
+		email=email_normalized,
 		password_hash=hash_password(user_data.password),
 		role=user_data.role,
 		account_type=user_data.account_type,
-		company_name=user_data.company_name,
-		phone_number=user_data.phone_number,
-		country=user_data.country,
+		company_name=user_data.company_name.strip() if user_data.company_name else None,
+		phone_number=user_data.phone_number.strip() if user_data.phone_number else None,
+		country=user_data.country.strip() if user_data.country else None,
 		tos_accepted=user_data.tos_accepted,
 		privacy_accepted=user_data.privacy_accepted,
 		shipping_terms_accepted=user_data.shipping_terms_accepted,
